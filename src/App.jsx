@@ -1,3 +1,5 @@
+console.log("Variável carregada:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "Sim" : "Não");
+
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import { 
