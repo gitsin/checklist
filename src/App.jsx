@@ -1,11 +1,10 @@
-console.log("Variável carregada:", process.env.NEXT_PUBLIC_SUPABASE_URL ? "Sim" : "Não");
-
 import { useEffect, useState } from "react";
 import { supabase } from "./supabaseClient";
 import { 
   Store, User, ArrowLeft, Calendar, 
   CheckCircle, Clock, XCircle, X, Settings, Plus, 
-  Pencil, Save, ToggleLeft, ToggleRight, Briefcase, ListChecks, Filter, PlayCircle, BarChart3, TrendingUp 
+  Pencil, Save, ToggleLeft, ToggleRight, Briefcase, ListChecks, Filter, PlayCircle, BarChart3, TrendingUp,
+  FileUp, AlertCircle 
 } from "lucide-react";
 
 export default function App() {
@@ -63,6 +62,9 @@ export default function App() {
   const [novaTarefaFreq, setNovaTarefaFreq] = useState("daily");
   const [novaTarefaLoja, setNovaTarefaLoja] = useState("");
   const [novaTarefaRole, setNovaTarefaRole] = useState("");
+  const [novaTarefaDueTime, setNovaTarefaDueTime] = useState("");
+  const [novaTarefaPhotoEvidence, setNovaTarefaPhotoEvidence] = useState(false);
+  const [rolesDaLoja, setRolesDaLoja] = useState([]);
   const [modalEditarTarefaOpen, setModalEditarTarefaOpen] = useState(false);
   const [tarefaEmEdicao, setTarefaEmEdicao] = useState(null);
   const [editTarefaTitulo, setEditTarefaTitulo] = useState("");
@@ -70,12 +72,20 @@ export default function App() {
   const [editTarefaFreq, setEditTarefaFreq] = useState("");
   const [editTarefaLoja, setEditTarefaLoja] = useState("");
   const [editTarefaRole, setEditTarefaRole] = useState("");
+  const [editTarefaDueTime, setEditTarefaDueTime] = useState("");
+  const [editTarefaPhotoEvidence, setEditTarefaPhotoEvidence] = useState(false);
+  const [rolesDaLojaEmEdicao, setRolesDaLojaEmEdicao] = useState([]);
+
+  // --- NOVO: ESTADOS DE IMPORTAÇÃO CSV ---
+  const [modalImportarOpen, setModalImportarOpen] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [logImportacao, setLogImportacao] = useState([]);
 
   // ADMIN: RELATÓRIOS
   const [filtroLojaRelatorio, setFiltroLojaRelatorio] = useState("");
   const [dadosRelatorio, setDadosRelatorio] = useState(null);
   const [statusContagem, setStatusContagem] = useState(null); 
-  const [eficienciaPorCargo, setEficienciaPorCargo] = useState([]); // NOVO ESTADO
+  const [eficienciaPorCargo, setEficienciaPorCargo] = useState([]); 
   
   // --- ESTADOS AUXILIARES ---
   const [contagemLojas, setContagemLojas] = useState({});
@@ -182,7 +192,7 @@ export default function App() {
     setFiltroLojaFunc(""); setFiltroRoleFunc("");
     setFiltroLojaTemplate(""); setFiltroRoleTemplate("");
     setFiltroLojaRelatorio(""); setDadosRelatorio(null); setStatusContagem(null);
-    setEficienciaPorCargo([]); // Limpa o novo estado
+    setEficienciaPorCargo([]); 
   }
 
   // ADMIN: LOJAS
@@ -252,6 +262,27 @@ export default function App() {
     if (error) alert("Erro: " + error.message); else { setModalEditarFuncionarioOpen(false); abrirAdminColaboradores(); }
   }
 
+  // ADMIN: TAREFAS (Funções de Apoio)
+  async function carregarCargosDaLoja(lojaId) {
+    if (!lojaId) return [];
+    const { data: employees, error } = await supabase.from("employee").select("role_id").eq("store_id", lojaId).eq("active", true);
+    if (error) return [];
+    const roleIds = [...new Set(employees.map(e => e.role_id))];
+    if (roleIds.length === 0) return [];
+    const { data: roleDetails } = await supabase.from("roles").select("*").in("id", roleIds).eq("active", true);
+    return roleDetails || [];
+  }
+  
+  async function handleLojaChangeNovaTarefa(lojaId) {
+    setNovaTarefaLoja(lojaId); setNovaTarefaRole(""); 
+    const roles = await carregarCargosDaLoja(lojaId); setRolesDaLoja(roles);
+  }
+  
+  async function handleLojaChangeEditarTarefa(lojaId) {
+    setEditTarefaLoja(lojaId); setEditTarefaRole("");
+    const roles = await carregarCargosDaLoja(lojaId); setRolesDaLojaEmEdicao(roles);
+  }
+
   // ADMIN: TAREFAS
   async function abrirAdminTarefas() {
     setAdminScreen('tarefas');
@@ -272,145 +303,152 @@ export default function App() {
   }
 
   function abrirModalNovaTarefa() {
-    if (!filtroLojaTemplate) return alert("Selecione uma loja no filtro primeiro!");
-    setNovaTarefaLoja(filtroLojaTemplate); setNovaTarefaRole(filtroRoleTemplate);
-    setNovaTarefaTitulo(""); setNovaTarefaDesc(""); setNovaTarefaFreq("daily"); setModalNovaTarefaOpen(true);
+    setNovaTarefaLoja(""); setNovaTarefaRole(""); setRolesDaLoja([]); setNovaTarefaTitulo(""); 
+    setNovaTarefaDesc(""); setNovaTarefaFreq("daily"); setNovaTarefaDueTime("");
+    setNovaTarefaPhotoEvidence(false); setModalNovaTarefaOpen(true);
   }
 
   async function salvarNovaTarefa() {
     if (!novaTarefaTitulo || !novaTarefaLoja || !novaTarefaRole) return alert("Campos obrigatórios!");
-    const { error } = await supabase.from("task_templates").insert({ title: novaTarefaTitulo, description: novaTarefaDesc, frequency_type: novaTarefaFreq, store_id: novaTarefaLoja, role_id: novaTarefaRole, active: true });
+    const { error } = await supabase.from("task_templates").insert({ 
+      title: novaTarefaTitulo, description: novaTarefaDesc, frequency_type: novaTarefaFreq, 
+      store_id: novaTarefaLoja, role_id: novaTarefaRole, active: true,
+      due_time: novaTarefaDueTime || null, requires_photo_evidence: novaTarefaPhotoEvidence,
+    });
     if (error) alert("Erro: " + error.message); else { setModalNovaTarefaOpen(false); buscarTemplatesFiltrados(novaTarefaLoja, novaTarefaRole); }
   }
 
-  function abrirModalEditarTarefa(template) {
-    setTarefaEmEdicao(template); setEditTarefaTitulo(template.title || ""); setEditTarefaDesc(template.description || ""); setEditTarefaFreq(template.frequency_type || "daily"); setEditTarefaLoja(template.store_id); setEditTarefaRole(template.role_id); setModalEditarTarefaOpen(true);
+  async function abrirModalEditarTarefa(template) {
+    setTarefaEmEdicao(template); setEditTarefaTitulo(template.title || ""); setEditTarefaDesc(template.description || ""); 
+    setEditTarefaFreq(template.frequency_type || "daily"); setEditTarefaLoja(template.store_id);
+    setEditTarefaDueTime(template.due_time || ""); setEditTarefaPhotoEvidence(template.requires_photo_evidence || false);
+    const roles = await carregarCargosDaLoja(template.store_id); setRolesDaLojaEmEdicao(roles);
+    const cargoAindaValido = roles.some(r => r.id === template.role_id);
+    if (cargoAindaValido) setEditTarefaRole(template.role_id); else setEditTarefaRole(""); 
+    setModalEditarTarefaOpen(true);
   }
 
   async function salvarEdicaoTarefa() {
     if (!editTarefaTitulo || !editTarefaLoja || !editTarefaRole) return alert("Campos obrigatórios!");
-    const { error } = await supabase.from("task_templates").update({ title: editTarefaTitulo, description: editTarefaDesc, frequency_type: editTarefaFreq, store_id: editTarefaLoja, role_id: editTarefaRole }).eq("id", tarefaEmEdicao.id);
+    const { error } = await supabase.from("task_templates").update({ 
+      title: editTarefaTitulo, description: editTarefaDesc, frequency_type: editTarefaFreq, 
+      store_id: editTarefaLoja, role_id: editTarefaRole,
+      due_time: editTarefaDueTime || null, requires_photo_evidence: editTarefaPhotoEvidence
+    }).eq("id", tarefaEmEdicao.id);
     if (error) alert("Erro: " + error.message); else { setModalEditarTarefaOpen(false); buscarTemplatesFiltrados(filtroLojaTemplate, filtroRoleTemplate); }
+  }
+
+  // --- FUNÇÃO DE IMPORTAÇÃO CSV (NOVA) ---
+  async function processarImportacaoCSV(e) {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+
+    setImportando(true);
+    setLogImportacao(["Lendo arquivo..."]);
+
+    const leitor = new FileReader();
+    leitor.onload = async (event) => {
+      const texto = event.target.result;
+      const linhas = texto.split(/\r?\n/).filter(linha => linha.trim() !== "");
+      const dadosParaInserir = [];
+      const novosLogs = [];
+
+      // Mapeamento de Nomes para IDs (Normalizado)
+      const mapaLojas = Object.fromEntries(lojas.map(l => [l.name.toLowerCase().trim(), l.id]));
+      const mapaCargos = Object.fromEntries(roles.map(r => [r.name.toLowerCase().trim(), r.id]));
+
+      // Pula cabeçalho (i=1)
+      for (let i = 1; i < linhas.length; i++) {
+        const colunas = linhas[i].split(",");
+        if (colunas.length < 5) continue;
+
+        const [titulo, descricao, frequencia, nomeLoja, nomeCargo, horario, exigeFoto] = colunas.map(c => c?.trim());
+
+        const store_id = mapaLojas[nomeLoja?.toLowerCase()];
+        const role_id = mapaCargos[nomeCargo?.toLowerCase()];
+
+        if (!store_id || !role_id) {
+          novosLogs.push(`❌ Linha ${i + 1}: Loja ou Cargo não encontrados (${nomeLoja} / ${nomeCargo})`);
+          continue;
+        }
+
+        dadosParaInserir.push({
+          title: titulo,
+          description: descricao,
+          frequency_type: frequencia || 'daily',
+          store_id,
+          role_id,
+          due_time: horario || null,
+          requires_photo_evidence: exigeFoto?.toLowerCase() === 'true',
+          active: true
+        });
+      }
+
+      if (dadosParaInserir.length > 0) {
+        const { error } = await supabase.from("task_templates").insert(dadosParaInserir);
+        if (error) {
+          novosLogs.push(`Erro Crítico: ${error.message}`);
+        } else {
+          novosLogs.push(`✅ Sucesso! ${dadosParaInserir.length} tarefas importadas.`);
+          buscarLojas(); // Atualiza dados gerais
+        }
+      } else {
+        novosLogs.push("⚠️ Nenhuma linha válida encontrada no arquivo.");
+      }
+
+      setLogImportacao(novosLogs);
+      setImportando(false);
+    };
+    leitor.readAsText(arquivo);
   }
 
   async function gerarRotinaDoDia() {
     setGerandoRotina(true);
     const { data, error } = await supabase.rpc('generate_daily_checklist');
     setGerandoRotina(false);
-    
-    if (error) {
-      alert("Erro ao gerar rotina: " + error.message);
-    } else {
-      alert("Sucesso! " + data);
-      atualizarContadoresGerais(); 
-    }
+    if (error) alert("Erro ao gerar rotina: " + error.message); else { alert("Sucesso! " + data); atualizarContadoresGerais(); }
   }
   
   // FUNÇÕES DE PROCESSAMENTO DE DADOS
   function calcularStatusContagem(items) {
-    const counts = {
-      COMPLETED: 0,
-      PENDING: 0,
-      POSTPONED: 0,
-      CANCELED: 0,
-      TOTAL: items.length
-    };
-    
-    items.forEach(item => {
-      if (item.status in counts) {
-        counts[item.status]++;
-      }
-    });
-
-    // Calcular Porcentagem de Conclusão (apenas itens que poderiam ser feitos/não cancelados)
+    const counts = { COMPLETED: 0, PENDING: 0, POSTPONED: 0, CANCELED: 0, TOTAL: items.length };
+    items.forEach(item => { if (item.status in counts) counts[item.status]++; });
     const executaveis = counts.TOTAL - counts.CANCELED;
     counts.PERCENT_COMPLETED = executaveis > 0 ? (counts.COMPLETED / executaveis) * 100 : 0;
-
     return counts;
   }
   
-  // NOVA FUNÇÃO: CALCULAR EFICIÊNCIA POR CARGO
   function calcularEficienciaPorCargo(items) {
     const efficiencyMap = {};
-
     items.forEach(item => {
         const roleId = item.template?.role_id;
         const roleName = item.template?.roles?.name || 'Não Classificado';
-
-        if (!roleId) return; // Ignora se não tiver cargo associado
-
-        if (!efficiencyMap[roleId]) {
-            efficiencyMap[roleId] = {
-                roleName: roleName,
-                total: 0,
-                completed: 0,
-                cancesled: 0,
-                percentCompleted: 0
-            };
-        }
-
+        if (!roleId) return;
+        if (!efficiencyMap[roleId]) efficiencyMap[roleId] = { roleName, total: 0, completed: 0, cancesled: 0, percentCompleted: 0 };
         efficiencyMap[roleId].total++;
-
-        if (item.status === 'COMPLETED') {
-            efficiencyMap[roleId].completed++;
-        }
-        if (item.status === 'CANCELED') {
-            efficiencyMap[roleId].cancesled++;
-        }
+        if (item.status === 'COMPLETED') efficiencyMap[roleId].completed++;
+        if (item.status === 'CANCELED') efficiencyMap[roleId].cancesled++;
     });
-
-    // Calcular o percentual de conclusão final
-    const efficiencyList = Object.values(efficiencyMap).map(data => {
+    return Object.values(efficiencyMap).map(data => {
         const executaveis = data.total - data.cancesled;
         data.percentCompleted = executaveis > 0 ? (data.completed / executaveis) * 100 : 0;
         return data;
-    }).sort((a, b) => b.percentCompleted - a.percentCompleted); // Ordena do maior para o menor
-
-    return efficiencyList;
+    }).sort((a, b) => b.percentCompleted - a.percentCompleted);
   }
 
   // ADMIN: RELATÓRIOS
   function abrirAdminRelatorios() {
-    setAdminScreen('relatorios');
-    setFiltroLojaRelatorio("");
-    setDadosRelatorio(null);
-    setStatusContagem(null);
-    setEficienciaPorCargo([]);
+    setAdminScreen('relatorios'); setFiltroLojaRelatorio(""); setDadosRelatorio(null); setStatusContagem(null); setEficienciaPorCargo([]);
   }
 
   async function buscarDashboardOperacional(lojaId) {
-    if (!lojaId) {
-      setDadosRelatorio(null);
-      setStatusContagem(null);
-      setEficienciaPorCargo([]); // Limpa o estado
-      return;
-    }
-
+    if (!lojaId) { setDadosRelatorio(null); setStatusContagem(null); setEficienciaPorCargo([]); return; }
     const hoje = new Date().toISOString().split('T')[0];
     setLoading(true);
-
-    const { data, error } = await supabase
-      .from("checklist_items")
-      .select(`
-        *, 
-        template:task_templates!inner ( title, description, role_id, roles(name) ),
-        completed_by:employee!completed_by_employee_id (full_name) 
-      `)
-      .eq("store_id", lojaId)
-      .eq("scheduled_date", hoje)
-      .order("status", { ascending: false });
-    
+    const { data, error } = await supabase.from("checklist_items").select(`*, template:task_templates!inner ( title, description, role_id, roles(name) ), completed_by:employee!completed_by_employee_id (full_name) `).eq("store_id", lojaId).eq("scheduled_date", hoje).order("status", { ascending: false });
     setLoading(false);
-    if (error) {
-      alert("Erro ao buscar dados do dashboard: " + error.message);
-      setDadosRelatorio(null);
-      setStatusContagem(null);
-      setEficienciaPorCargo([]);
-    } else {
-      setDadosRelatorio(data || []);
-      setStatusContagem(calcularStatusContagem(data || [])); 
-      setEficienciaPorCargo(calcularEficienciaPorCargo(data || [])); // NOVO CÁLCULO
-    }
+    if (error) { setDadosRelatorio(null); setStatusContagem(null); setEficienciaPorCargo([]); } 
+    else { setDadosRelatorio(data || []); setStatusContagem(calcularStatusContagem(data || [])); setEficienciaPorCargo(calcularEficienciaPorCargo(data || [])); }
   }
 
 
@@ -425,21 +463,18 @@ export default function App() {
             <button onClick={sairDoAdmin} className="text-slate-400 hover:text-white underline">Sair / Voltar ao Quiosque</button>
           </div>
 
-          {/* MENU */}
+          {/* MENU PRINCIPAL */}
           {adminScreen === 'menu' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <button onClick={() => setAdminScreen('lojas')} className="bg-slate-700 p-8 rounded-xl hover:bg-blue-600 transition-all text-xl font-bold border border-slate-600 flex flex-col items-center gap-4"><Store size={40} /> Lojas</button>
               <button onClick={() => setAdminScreen('cargos')} className="bg-slate-700 p-8 rounded-xl hover:bg-blue-600 transition-all text-xl font-bold border border-slate-600 flex flex-col items-center gap-4"><Briefcase size={40} /> Cargos</button>
               <button onClick={() => abrirAdminColaboradores()} className="bg-slate-700 p-8 rounded-xl hover:bg-blue-600 transition-all text-xl font-bold border border-slate-600 flex flex-col items-center gap-4"><User size={40} /> Colaboradores</button>
               <button onClick={abrirAdminTarefas} className="bg-slate-700 p-8 rounded-xl hover:bg-purple-600 transition-all text-xl font-bold border border-slate-600 flex flex-col items-center gap-4"><ListChecks size={40} /> Tarefas</button>
-              
-              <button onClick={abrirAdminRelatorios} className="bg-slate-700 p-8 rounded-xl hover:bg-teal-600 transition-all text-xl font-bold border border-slate-600 flex flex-col items-center gap-4">
-                <BarChart3 size={40} /> Relatórios
-              </button>
+              <button onClick={abrirAdminRelatorios} className="bg-slate-700 p-8 rounded-xl hover:bg-teal-600 transition-all text-xl font-bold border border-slate-600 flex flex-col items-center gap-4"><BarChart3 size={40} /> Relatórios</button>
             </div>
           )}
 
-          {/* TELA LOJAS (MANTIDO) */}
+          {/* TELA LOJAS */}
           {adminScreen === 'lojas' && (
             <div className="animate-fade-in">
               <button onClick={() => setAdminScreen('menu')} className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white"><ArrowLeft /> Voltar ao Menu</button>
@@ -448,7 +483,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TELA CARGOS (MANTIDO) */}
+          {/* TELA CARGOS */}
           {adminScreen === 'cargos' && (
             <div className="animate-fade-in">
               <button onClick={() => setAdminScreen('menu')} className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white"><ArrowLeft /> Voltar ao Menu</button>
@@ -457,7 +492,7 @@ export default function App() {
             </div>
           )}
 
-          {/* TELA COLABORADORES (MANTIDO) */}
+          {/* TELA COLABORADORES */}
           {adminScreen === 'colaboradores' && (
             <div className="animate-fade-in">
               <div className="flex justify-between items-center mb-6">
@@ -472,13 +507,17 @@ export default function App() {
             </div>
           )}
 
-          {/* TELA TAREFAS (MANTIDO) */}
+          {/* TELA TAREFAS */}
           {adminScreen === 'tarefas' && (
             <div className="animate-fade-in">
               <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <button onClick={() => setAdminScreen('menu')} className="flex items-center gap-2 text-slate-400 hover:text-white"><ArrowLeft /> Voltar ao Menu</button>
                 <div className="flex gap-4">
-                  <button onClick={gerarRotinaDoDia} disabled={gerandoRotina} className="bg-green-600 px-4 py-2 rounded font-bold hover:bg-green-500 flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-wait"><PlayCircle size={20} /> {gerandoRotina ? "Gerando..." : "Gerar Rotina do Dia"}</button>
+                  {/* NOVO BOTÃO IMPORTAR */}
+                  <button onClick={() => setModalImportarOpen(true)} className="bg-slate-600 px-4 py-2 rounded font-bold hover:bg-slate-500 flex items-center gap-2 shadow-lg">
+                    <FileUp size={20} /> Importar CSV
+                  </button>
+                  <button onClick={gerarRotinaDoDia} disabled={gerandoRotina} className="bg-green-600 px-4 py-2 rounded font-bold hover:bg-green-500 flex items-center gap-2 shadow-lg disabled:opacity-50"><PlayCircle size={20} /> {gerandoRotina ? "Gerando..." : "Gerar Rotina do Dia"}</button>
                   <button onClick={abrirModalNovaTarefa} className="bg-purple-600 px-4 py-2 rounded font-bold hover:bg-purple-500 flex items-center gap-2 shadow-lg"><Plus size={20} /> Nova Tarefa</button>
                 </div>
               </div>
@@ -490,148 +529,39 @@ export default function App() {
             </div>
           )}
 
-          {/* TELA RELATÓRIOS (DASHBOARD OPERACIONAL) - NOVO LAYOUT DE KPIS */}
+          {/* TELA RELATÓRIOS */}
           {adminScreen === 'relatorios' && (
             <div className="animate-fade-in">
               <button onClick={() => setAdminScreen('menu')} className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white"><ArrowLeft /> Voltar ao Menu</button>
-              
               <h2 className="text-3xl font-bold mb-6 flex items-center gap-2 text-teal-400"><TrendingUp /> Dashboard Operacional</h2>
-
-              {/* Filtro Principal */}
               <div className="bg-slate-700 p-6 rounded-xl mb-8 border border-slate-600">
                 <label className="block text-sm font-bold text-slate-400 mb-2 flex items-center gap-2"><Store size={16}/> Selecione a Loja para Análise (Hoje)</label>
-                <select 
-                  className="w-full p-3 rounded bg-slate-800 border border-slate-500 text-white outline-none text-lg" 
-                  value={filtroLojaRelatorio} 
-                  onChange={(e) => { 
-                    setFiltroLojaRelatorio(e.target.value); 
-                    buscarDashboardOperacional(e.target.value); 
-                  }}
-                >
+                <select className="w-full p-3 rounded bg-slate-800 border border-slate-500 text-white outline-none text-lg" value={filtroLojaRelatorio} onChange={(e) => { setFiltroLojaRelatorio(e.target.value); buscarDashboardOperacional(e.target.value); }} >
                   <option value="">-- Selecione uma loja --</option>
                   {lojas.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </div>
-
-              {/* Conteúdo do Dashboard */}
-              {filtroLojaRelatorio && loading && (
-                <div className="text-center py-10 text-teal-400 font-bold">Carregando dados...</div>
-              )}
-              
+              {filtroLojaRelatorio && loading && (<div className="text-center py-10 text-teal-400 font-bold">Carregando dados...</div>)}
               {filtroLojaRelatorio && statusContagem && !loading && (
                 <div className="bg-white p-6 rounded-xl text-slate-800">
                   <h3 className="text-xl font-bold mb-4">Resumo Diário: {lojas.find(l => l.id === filtroLojaRelatorio)?.name}</h3>
-                  
-                  {/* KPIS DE STATUS (5 COLUNAS) */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-                    
-                    {/* Card 1: Total de Atividades */}
-                    <div className="bg-slate-100 p-4 rounded-xl text-center border-b-4 border-slate-400">
-                        <span className="text-xs font-semibold text-slate-700 block">Total de Atividades</span>
-                        <span className="text-3xl font-extrabold text-slate-800">
-                            {statusContagem.TOTAL}
-                        </span>
-                    </div>
-
-                    {/* Card 2: Atividades Concluídas */}
-                    <div className="bg-green-50 p-4 rounded-xl text-center border-b-4 border-green-500">
-                        <span className="text-xs font-semibold text-green-700 block">Concluídas</span>
-                        <span className="text-3xl font-extrabold text-green-800">
-                            {statusContagem.COMPLETED}
-                        </span>
-                    </div>
-
-                    {/* Card 3: Atividades Adiada */}
-                    <div className="bg-yellow-50 p-4 rounded-xl text-center border-b-4 border-yellow-500">
-                        <span className="text-xs font-semibold text-yellow-700 block">Adiada</span>
-                        <span className="text-3xl font-extrabold text-yellow-800">
-                            {statusContagem.POSTPONED}
-                        </span>
-                    </div>
-
-                    {/* Card 4: Atividades Canceladas */}
-                    <div className="bg-red-50 p-4 rounded-xl text-center border-b-4 border-red-500">
-                        <span className="text-xs font-semibold text-red-700 block">Canceladas</span>
-                        <span className="text-3xl font-extrabold text-red-800">
-                            {statusContagem.CANCELED}
-                        </span>
-                    </div>
-
-                    {/* Card 5: % Conclusão */}
-                    <div className="bg-blue-50 p-4 rounded-xl text-center border-b-4 border-blue-500">
-                        <span className="text-xs font-semibold text-blue-700 block">Conclusão (%)</span>
-                        <span className="text-3xl font-extrabold text-blue-800">
-                            {statusContagem.PERCENT_COMPLETED.toFixed(0)}%
-                        </span>
-                    </div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    <div className="bg-slate-100 p-4 rounded-xl text-center border-b-4 border-slate-400"><span className="text-xs font-semibold text-slate-700 block">Total</span><span className="text-3xl font-extrabold text-slate-800">{statusContagem.TOTAL}</span></div>
+                    <div className="bg-green-50 p-4 rounded-xl text-center border-b-4 border-green-500"><span className="text-xs font-semibold text-green-700 block">Concluídas</span><span className="text-3xl font-extrabold text-green-800">{statusContagem.COMPLETED}</span></div>
+                    <div className="bg-yellow-50 p-4 rounded-xl text-center border-b-4 border-yellow-500"><span className="text-xs font-semibold text-yellow-700 block">Adiada</span><span className="text-3xl font-extrabold text-yellow-800">{statusContagem.POSTPONED}</span></div>
+                    <div className="bg-red-50 p-4 rounded-xl text-center border-b-4 border-red-500"><span className="text-xs font-semibold text-red-700 block">Canceladas</span><span className="text-3xl font-extrabold text-red-800">{statusContagem.CANCELED}</span></div>
+                    <div className="bg-blue-50 p-4 rounded-xl text-center border-b-4 border-blue-500"><span className="text-xs font-semibold text-blue-700 block">Conclusão (%)</span><span className="text-3xl font-extrabold text-blue-800">{statusContagem.PERCENT_COMPLETED.toFixed(0)}%</span></div>
                   </div>
-
-                  {/* NOVO DASHBOARD: EFICIÊNCIA POR CARGO */}
                   <div className="mt-10 pt-4 border-t border-slate-200">
                       <h4 className="text-xl font-bold mb-4 flex items-center gap-2 text-teal-700"><BarChart3 size={20} /> Eficiência por Cargo (Hoje)</h4>
-                      
-                      {eficienciaPorCargo.length === 0 ? (
-                          <p className="text-slate-500 italic">Nenhuma tarefa atribuída a cargos ativos hoje.</p>
-                      ) : (
-                          <div className="space-y-4">
-                              {eficienciaPorCargo.map((data) => (
-                                  <div key={data.roleName} className="p-3 bg-slate-50 rounded-lg shadow-sm border border-slate-200">
-                                      <div className="flex justify-between items-center mb-1">
-                                          <span className="font-semibold text-slate-700">{data.roleName}</span>
-                                          <span className="font-bold text-lg" style={{ color: data.percentCompleted >= 90 ? '#059669' : data.percentCompleted >= 70 ? '#f59e0b' : '#dc2626' }}>
-                                              {data.percentCompleted.toFixed(0)}%
-                                          </span>
-                                      </div>
-                                      <div className="w-full bg-slate-200 rounded-full h-2.5">
-                                          <div 
-                                              className="h-2.5 rounded-full" 
-                                              style={{ 
-                                                  width: `${data.percentCompleted}%`, 
-                                                  backgroundColor: data.percentCompleted >= 90 ? '#10b981' : data.percentCompleted >= 70 ? '#f59e0b' : '#ef4444' 
-                                              }}
-                                          ></div>
-                                      </div>
-                                      <p className="text-xs text-slate-500 mt-1">Concluídas: {data.completed} / Executáveis: {data.total - data.cancesled}</p>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                  </div>
-
-
-                  <h4 className="text-lg font-bold mt-8 mb-3 border-t pt-4 border-slate-200">Itens do Checklist (Tabela de Detalhes)</h4>
-                  
-                  {/* Tabela de Detalhes (COM AJUSTE DE LAYOUT) */}
-                  <div className="mt-4 max-h-96 overflow-y-auto border rounded-lg">
-                    <table className="min-w-full divide-y divide-slate-300">
-                      <thead>
-                        <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase w-5/12">Tarefa</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase w-2/12">Cargo</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase w-3/12">Concluído Por</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase w-2/12">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {dadosRelatorio.map(item => (
-                          <tr key={item.id}>
-                            <td className="px-3 py-2 text-sm font-medium text-slate-900 align-top">{item.template?.title}</td>
-                            <td className="px-3 py-2 text-sm text-slate-600 align-top">{item.template?.roles?.name}</td>
-                            <td className="px-3 py-2 text-sm text-slate-600 align-top">{item.completed_by?.full_name || 'PENDENTE'}</td>
-                            <td className="px-3 py-2 text-sm font-bold align-top">
-                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                item.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                item.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                                item.status === 'CANCELED' ? 'bg-red-100 text-red-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
-                                {item.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      <div className="space-y-4">
+                          {eficienciaPorCargo.map((data) => (
+                              <div key={data.roleName} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                  <div className="flex justify-between items-center mb-1"><span className="font-semibold text-slate-700">{data.roleName}</span><span className="font-bold text-lg" style={{ color: data.percentCompleted >= 90 ? '#059669' : '#f59e0b' }}>{data.percentCompleted.toFixed(0)}%</span></div>
+                                  <div className="w-full bg-slate-200 rounded-full h-2.5"><div className="h-2.5 rounded-full" style={{ width: `${data.percentCompleted}%`, backgroundColor: data.percentCompleted >= 90 ? '#10b981' : '#f59e0b' }}></div></div>
+                              </div>
+                          ))}
+                      </div>
                   </div>
                 </div>
               )}
@@ -639,17 +569,51 @@ export default function App() {
           )}
         </div>
 
-        {/* MODAIS DE ADMINISTRAÇÃO (MANTIDOS) */}
-        {modalEditarLojaOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800 animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-blue-500"/> Editar Loja</h3><button onClick={() => setModalEditarLojaOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editName} onChange={(e) => setEditName(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome resumido</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editShortName} onChange={(e) => setEditShortName(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Código Interno ERP</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editInternalCode} onChange={(e) => setEditInternalCode(e.target.value)} /></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarLojaOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarEdicaoLoja} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
-        {modalEditarCargoOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800 animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-blue-500"/> Editar Cargo</h3><button onClick={() => setModalEditarCargoOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome do Cargo</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editCargoNome} onChange={(e) => setEditCargoNome(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Nível</label><input type="number" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editCargoNivel} onChange={(e) => setEditCargoNivel(e.target.value)} /></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarCargoOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarEdicaoCargo} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
-        {modalNovoFuncionarioOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800 animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Plus className="text-blue-600"/> Novo Colaborador</h3><button onClick={() => setModalNovoFuncionarioOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome Completo</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" placeholder="Ex: João da Silva" value={novoFuncNome} onChange={(e) => setNovoFuncNome(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Loja de Atuação</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500 bg-white" value={novoFuncLoja} onChange={(e) => setNovoFuncLoja(e.target.value)}><option value="">Selecione uma loja...</option>{lojas.map(loja => (<option key={loja.id} value={loja.id}>{loja.name}</option>))}</select></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo / Função</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500 bg-white" value={novoFuncRole} onChange={(e) => setNovoFuncRole(e.target.value)}><option value="">Selecione um cargo...</option>{roles.map(role => (<option key={role.id} value={role.id}>{role.name}</option>))}</select></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalNovoFuncionarioOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarNovoColaborador} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
-        {modalEditarFuncionarioOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800 animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-blue-500"/> Editar Colaborador</h3><button onClick={() => setModalEditarFuncionarioOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome Completo</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editFuncNome} onChange={(e) => setEditFuncNome(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Loja de Atuação</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500 bg-white" value={editFuncLoja} onChange={(e) => setEditFuncLoja(e.target.value)}><option value="">Selecione uma loja...</option>{lojas.map(loja => (<option key={loja.id} value={loja.id}>{loja.name}</option>))}</select></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo / Função</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500 bg-white" value={editFuncRole} onChange={(e) => setEditFuncRole(e.target.value)}><option value="">Selecione um cargo...</option>{roles.map(role => (<option key={role.id} value={role.id}>{role.name}</option>))}</select></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarFuncionarioOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarEdicaoColaborador} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
-        {modalNovaTarefaOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg text-slate-800 animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Plus className="text-purple-600"/> Nova Tarefa</h3><button onClick={() => setModalNovaTarefaOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Título</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500" placeholder="Ex: Verificar temperatura freezers" value={novaTarefaTitulo} onChange={(e) => setNovaTarefaTitulo(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Descrição</label><textarea className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 h-24" placeholder="Detalhes..." value={novaTarefaDesc} onChange={(e) => setNovaTarefaDesc(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Frequência</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 bg-white" value={novaTarefaFreq} onChange={(e) => setNovaTarefaFreq(e.target.value)}><option value="daily">Diária</option><option value="weekly">Semanal</option><option value="monthly">Mensal</option></select></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 bg-white" value={novaTarefaRole} onChange={(e) => setNovaTarefaRole(e.target.value)}><option value="">Selecione...</option>{roles.map(r => (<option key={r.id} value={r.id}>{r.name}</option>))}</select></div></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Loja</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 bg-white" value={novaTarefaLoja} onChange={(e) => setNovaTarefaLoja(e.target.value)}><option value="">Selecione...</option>{lojas.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalNovaTarefaOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarNovaTarefa} className="flex-1 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
-        {modalEditarTarefaOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg text-slate-800 animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-purple-600"/> Editar Tarefa</h3><button onClick={() => setModalEditarTarefaOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Título</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500" value={editTarefaTitulo} onChange={(e) => setEditTarefaTitulo(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Descrição</label><textarea className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 h-24" value={editTarefaDesc} onChange={(e) => setEditTarefaDesc(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Frequência</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 bg-white" value={editTarefaFreq} onChange={(e) => setEditTarefaFreq(e.target.value)}><option value="daily">Diária</option><option value="weekly">Semanal</option><option value="monthly">Mensal</option></select></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 bg-white" value={editTarefaRole} onChange={(e) => setEditTarefaRole(e.target.value)}><option value="">Selecione...</option>{roles.map(r => (<option key={r.id} value={r.id}>{r.name}</option>))}</select></div></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Loja</label><select className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-purple-500 bg-white" value={editTarefaLoja} onChange={(e) => setEditTarefaLoja(e.target.value)}><option value="">Selecione...</option>{lojas.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarTarefaOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarEdicaoTarefa} className="flex-1 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
+        {/* MODAIS DE ADMINISTRAÇÃO */}
+        {modalEditarLojaOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-blue-500"/> Editar Loja</h3><button onClick={() => setModalEditarLojaOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editName} onChange={(e) => setEditName(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome resumido</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editShortName} onChange={(e) => setEditShortName(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Código Interno ERP</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editInternalCode} onChange={(e) => setEditInternalCode(e.target.value)} /></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarLojaOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarEdicaoLoja} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
+        {modalEditarCargoOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-blue-500"/> Editar Cargo</h3><button onClick={() => setModalEditarCargoOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome do Cargo</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editCargoNome} onChange={(e) => setEditCargoNome(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Nível</label><input type="number" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={editCargoNivel} onChange={(e) => setEditCargoNivel(e.target.value)} /></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarCargoOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Cancelar</button><button onClick={salvarEdicaoCargo} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex justify-center items-center gap-2"><Save size={18} /> Salvar</button></div></div></div>)}
+        {modalNovoFuncionarioOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Plus className="text-blue-600"/> Novo Colaborador</h3><button onClick={() => setModalNovoFuncionarioOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome Completo</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:border-blue-500" value={novoFuncNome} onChange={(e) => setNovoFuncNome(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Loja</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={novoFuncLoja} onChange={(e) => setNovoFuncLoja(e.target.value)}><option value="">Selecionar...</option>{lojas.map(loja => (<option key={loja.id} value={loja.id}>{loja.name}</option>))}</select></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={novoFuncRole} onChange={(e) => setNovoFuncRole(e.target.value)}><option value="">Selecionar...</option>{roles.map(role => (<option key={role.id} value={role.id}>{role.name}</option>))}</select></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalNovoFuncionarioOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancelar</button><button onClick={salvarNovoColaborador} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg">Salvar</button></div></div></div>)}
+        {modalEditarFuncionarioOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md text-slate-800"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Pencil className="text-blue-500"/> Editar Colaborador</h3><button onClick={() => setModalEditarFuncionarioOpen(false)} className="text-slate-400 hover:text-slate-600"><X /></button></div><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-600 mb-1">Nome Completo</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3" value={editFuncNome} onChange={(e) => setEditFuncNome(e.target.value)} /></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Loja</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={editFuncLoja} onChange={(e) => setEditFuncLoja(e.target.value)}>{lojas.map(loja => (<option key={loja.id} value={loja.id}>{loja.name}</option>))}</select></div><div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={editFuncRole} onChange={(e) => setEditFuncRole(e.target.value)}>{roles.map(role => (<option key={role.id} value={role.id}>{role.name}</option>))}</select></div></div><div className="flex gap-3 mt-8"><button onClick={() => setModalEditarFuncionarioOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancelar</button><button onClick={salvarEdicaoColaborador} className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg">Salvar</button></div></div></div>)}
+        
+        {/* MODAIS TAREFAS */}
+        {modalNovaTarefaOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg text-slate-800"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold flex items-center gap-2"><Plus className="text-purple-600"/> Nova Tarefa</h3><button onClick={() => setModalNovaTarefaOpen(false)} className="text-slate-400"><X /></button></div><div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-sm font-bold text-slate-600 mb-1">Loja</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={novaTarefaLoja} onChange={(e) => handleLojaChangeNovaTarefa(e.target.value)}><option value="">Selecionar...</option>{lojas.filter(l => l.active).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select></div>
+            <div><label className="block text-sm font-bold text-slate-600 mb-1">Cargo</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={novaTarefaRole} onChange={(e) => setNovaTarefaRole(e.target.value)} disabled={!novaTarefaLoja}><option value="">Selecionar...</option>{rolesDaLoja.map(r => (<option key={r.id} value={r.id}>{r.name}</option>))}</select></div>
+          </div>
+          <div><label className="block text-sm font-bold text-slate-600 mb-1">Título</label><input type="text" className="w-full border border-slate-300 rounded-lg p-3" value={novaTarefaTitulo} onChange={(e) => setNovaTarefaTitulo(e.target.value)} /></div>
+          <div><label className="block text-sm font-bold text-slate-600 mb-1">Descrição</label><textarea className="w-full border border-slate-300 rounded-lg p-3 h-20" value={novaTarefaDesc} onChange={(e) => setNovaTarefaDesc(e.target.value)} /></div>
+          <div className="grid grid-cols-2 gap-4 items-center pt-2">
+            <div><label className="block text-sm font-bold text-slate-600 mb-1">Frequência</label><select className="w-full border border-slate-300 rounded-lg p-3 bg-white" value={novaTarefaFreq} onChange={(e) => setNovaTarefaFreq(e.target.value)}><option value="daily">Diária</option><option value="weekly">Semanal</option><option value="monthly">Mensal</option></select></div>
+            <div className="flex items-center gap-3 pt-6"><input type="checkbox" className="h-5 w-5" checked={novaTarefaPhotoEvidence} onChange={(e) => setNovaTarefaPhotoEvidence(e.target.checked)} /><label className="font-bold text-slate-600 text-sm">Exige Foto</label></div>
+          </div>
+          </div><div className="flex gap-3 mt-8"><button onClick={() => setModalNovaTarefaOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Cancelar</button><button onClick={salvarNovaTarefa} className="flex-1 py-3 bg-purple-600 text-white font-bold rounded-lg shadow-md">Salvar</button></div></div></div>)}
 
-        {/* MODAIS QUIOSQUE (MANTIDOS) */}
-        {modalAdiarOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-slate-800 mb-4">Adiar Tarefa</h3><input type="datetime-local" className="w-full border-2 border-slate-200 rounded-lg p-3 text-lg mb-6" value={novaDataPrazo} onChange={(e) => setNovaDataPrazo(e.target.value)} /><div className="flex gap-3"><button onClick={() => setModalAdiarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Voltar</button><button onClick={confirmarAdiamento} className="flex-1 py-3 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 shadow-md">Confirmar</button></div></div></div>)}
-        {modalCancelarOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-slate-800 mb-4">Cancelar Tarefa</h3><textarea className="w-full border-2 border-slate-200 rounded-lg p-3 mb-6 min-h-[100px]" placeholder="Motivo..." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} /><div className="flex gap-3"><button onClick={() => setModalCancelarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Voltar</button><button onClick={confirmarCancelamento} className="flex-1 py-3 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 shadow-md">Confirmar</button></div></div></div>)}
+        {/* NOVO: MODAL IMPORTAR CSV */}
+        {modalImportarOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg text-slate-800">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold flex items-center gap-2"><FileUp className="text-blue-600"/> Importar Tarefas</h3>
+                <button onClick={() => {setModalImportarOpen(false); setLogImportacao([]);}} className="text-slate-400 hover:text-slate-600"><X /></button>
+              </div>
+              <div className="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100 text-xs text-blue-800">
+                <p className="font-bold mb-1">Ordem das colunas (Separado por vírgula):</p>
+                <code>titulo, descricao, frequencia, loja, cargo, horario_limite, exige_foto</code>
+              </div>
+              <input type="file" accept=".csv" onChange={processarImportacaoCSV} disabled={importando} className="w-full border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-blue-500 transition-colors" />
+              {logImportacao.length > 0 && (
+                <div className="mt-6 max-h-40 overflow-y-auto bg-slate-900 text-slate-300 p-4 rounded-lg text-xs font-mono">
+                  {logImportacao.map((log, i) => <div key={i} className="mb-1">{log}</div>)}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAIS QUIOSQUE */}
+        {modalAdiarOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-slate-800 mb-4">Adiar Tarefa</h3><input type="datetime-local" className="w-full border-2 border-slate-200 rounded-lg p-3 mb-6" value={novaDataPrazo} onChange={(e) => setNovaDataPrazo(e.target.value)} /><div className="flex gap-3"><button onClick={() => setModalAdiarOpen(false)} className="flex-1 py-3 text-slate-500">Voltar</button><button onClick={confirmarAdiamento} className="flex-1 py-3 bg-amber-500 text-white font-bold rounded-lg shadow-md">Confirmar</button></div></div></div>)}
+        {modalCancelarOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-slate-800 mb-4">Cancelar Tarefa</h3><textarea className="w-full border-2 border-slate-200 rounded-lg p-3 mb-6 min-h-[100px]" placeholder="Motivo..." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} /><div className="flex gap-3"><button onClick={() => setModalCancelarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold">Voltar</button><button onClick={confirmarCancelamento} className="flex-1 py-3 bg-red-500 text-white font-bold rounded-lg shadow-md">Confirmar</button></div></div></div>)}
       </div>
     );
   }
@@ -657,31 +621,21 @@ export default function App() {
   // --- VIEW QUIOSQUE (PADRÃO) ---
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col items-center py-8 px-4 font-sans text-slate-800">
-      {!lojaAtual && (<button onClick={entrarNoAdmin} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-2 transition-colors z-50" title="Admin"><Settings size={24} /></button>)}
-      
-      {/* TELA DE SELEÇÃO DE LOJA */}
+      {!lojaAtual && (<button onClick={entrarNoAdmin} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-2 z-50"><Settings size={24} /></button>)}
       {!lojaAtual && (
         <div className="w-full max-w-4xl animate-fade-in"><h1 className="text-3xl font-bold text-center mb-8">Selecione a Unidade</h1>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{lojas.filter(l => l.active).map((loja) => { const qtd = contagemLojas[loja.id] || 0; return (<button key={loja.id} onClick={() => selecionarLoja(loja)} className="relative bg-white p-8 rounded-2xl shadow-lg hover:scale-105 transition-all flex flex-col items-center gap-4 border border-slate-200">{qtd > 0 && <div className="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md border-4 border-slate-100 text-lg">{qtd}</div>}<div className="bg-blue-100 p-4 rounded-full"><Store size={48} className="text-blue-600" /></div><span className="text-2xl font-bold">{loja.name}</span></button>)})}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{lojas.filter(l => l.active).map((loja) => { const qtd = contagemLojas[loja.id] || 0; return (<button key={loja.id} onClick={() => selecionarLoja(loja)} className="relative bg-white p-8 rounded-2xl shadow-lg flex flex-col items-center gap-4 border border-slate-200">{qtd > 0 && <div className="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md border-4 border-slate-100 text-lg">{qtd}</div>}<div className="bg-blue-100 p-4 rounded-full"><Store size={48} className="text-blue-600" /></div><span className="text-2xl font-bold">{loja.name}</span></button>)})}</div>
         </div>
       )}
-
-      {/* TELA DE SELEÇÃO DE FUNCIONÁRIO */}
       {lojaAtual && !usuarioAtual && (
-        <div className="w-full max-w-5xl"><button onClick={voltarParaLojas} className="mb-6 flex items-center gap-2 text-slate-500 hover:text-blue-600 font-medium"><ArrowLeft /> Trocar de Loja</button><h2 className="text-3xl font-bold text-center mb-10">Quem é você?</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">{funcionarios.filter(f => f.active).map((func) => { const qtd = contagemCargos[func.role_id] || 0; return (<button key={func.id} onClick={() => selecionarUsuario(func)} className="relative aspect-square bg-white rounded-3xl shadow-md hover:shadow-xl hover:-translate-y-2 transition-all flex flex-col items-center justify-center gap-4 border border-slate-100 group">{qtd > 0 && <div className="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md border-4 border-slate-100 text-lg z-10">{qtd}</div>}{func.avatar_url ? <img src={func.avatar_url} className="w-24 h-24 rounded-full object-cover border-4 border-slate-50 group-hover:border-blue-100" /> : <div className="w-24 h-24 rounded-full bg-slate-200 flex items-center justify-center group-hover:bg-blue-50"><User size={40} className="text-slate-400 group-hover:text-blue-400" /></div>}<span className="text-xl font-bold text-center px-2">{func.full_name}</span></button>)})}</div>
+        <div className="w-full max-w-5xl"><button onClick={voltarParaLojas} className="mb-6 flex items-center gap-2 text-slate-500 font-medium"><ArrowLeft /> Trocar de Loja</button><h2 className="text-3xl font-bold text-center mb-10">Quem é você?</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">{funcionarios.filter(f => f.active).map((func) => { const qtd = contagemCargos[func.role_id] || 0; return (<button key={func.id} onClick={() => selecionarUsuario(func)} className="relative aspect-square bg-white rounded-3xl shadow-md flex flex-col items-center justify-center gap-4 border border-slate-100 group">{qtd > 0 && <div className="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold border-4 border-slate-100 text-lg z-10">{qtd}</div>}<div className="w-24 h-24 rounded-full bg-slate-200 flex items-center justify-center"><User size={40} className="text-slate-400" /></div><span className="text-xl font-bold text-center px-2">{func.full_name}</span></button>)})}</div>
         </div>
       )}
-      
-      {/* TELA DE CHECKLIST DIÁRIO */}
       {usuarioAtual && (
-        <div className="w-full max-w-3xl pb-20"><div className="bg-blue-600 text-white p-6 rounded-t-3xl shadow-lg flex items-center justify-between sticky top-0 z-10"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-xl font-bold">{usuarioAtual.full_name.charAt(0)}</div><div><h2 className="text-xl font-bold">{usuarioAtual.full_name}</h2><p className="text-blue-100 text-sm">Operando: {lojaAtual.name}</p></div></div><button onClick={voltarParaFuncionarios} className="bg-white/10 hover:bg-white/20 py-2 px-4 rounded-lg text-sm transition-colors">Voltar</button></div>
-          <div className="bg-white rounded-b-3xl shadow-lg p-4 min-h-[500px]">{loading ? <div className="text-center py-10 text-slate-400">Carregando...</div> : tarefas.length === 0 ? <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200"><p className="text-slate-500 font-medium">Tudo limpo por hoje!</p></div> : (<div className="space-y-4">{tarefas.map((tarefa) => { const isCompleted = tarefa.status === 'COMPLETED'; const isPostponed = tarefa.status === 'POSTPONED'; const isCanceled = tarefa.status === 'CANCELED'; let cardClass = "border-slate-100 bg-white"; if (isCompleted) cardClass = "border-green-200 bg-green-50 opacity-75"; if (isPostponed) cardClass = "border-amber-200 bg-amber-50"; if (isCanceled) cardClass = "border-red-200 bg-red-50 opacity-60"; return (<div key={tarefa.id} className={`p-4 rounded-xl border-2 transition-all ${cardClass}`}><div className="mb-4"><h4 className={`text-lg font-bold flex items-center gap-2 ${isCompleted || isCanceled ? 'line-through text-slate-400' : 'text-slate-700'}`}>{tarefa.template?.title}{isPostponed && <span className="text-xs bg-amber-200 text-amber-800 px-2 py-1 rounded-full">Adiado</span>}{isCanceled && <span className="text-xs bg-red-200 text-red-800 px-2 py-1 rounded-full">Cancelado</span>}</h4><p className="text-sm text-slate-500 mb-1">{tarefa.template?.description}</p>{isPostponed && tarefa.postponed_to && <p className="text-xs text-amber-700 mt-1">Nova data: {new Date(tarefa.postponed_to).toLocaleDateString('pt-BR')}</p>}{isCanceled && tarefa.cancellation_reason && <p className="text-xs text-red-700 mt-1">Motivo: {tarefa.cancellation_reason}</p>}</div>{!isCanceled && (<div className="flex gap-2 flex-wrap"><button onClick={(e) => handleConcluir(e, tarefa)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-bold transition-colors ${isCompleted ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-100 text-slate-600 hover:bg-green-100 hover:text-green-700'}`}><CheckCircle size={18} /> {isCompleted ? "Feito" : "Concluir"}</button>{!isCompleted && <button onClick={(e) => abrirModalAdiar(e, tarefa)} className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-amber-100 hover:text-amber-700 transition-colors"><Clock size={18} /> Adiar</button>}{!isCompleted && <button onClick={(e) => abrirModalCancelar(e, tarefa)} className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-700 transition-colors"><XCircle size={18} /> Cancelar</button>}</div>)}</div>); })}</div>)}</div></div>
+        <div className="w-full max-w-3xl pb-20"><div className="bg-blue-600 text-white p-6 rounded-t-3xl shadow-lg flex items-center justify-between sticky top-0 z-10"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-xl font-bold">{usuarioAtual.full_name.charAt(0)}</div><div><h2 className="text-xl font-bold">{usuarioAtual.full_name}</h2><p className="text-blue-100 text-sm">Operando: {lojaAtual.name}</p></div></div><button onClick={voltarParaFuncionarios} className="bg-white/10 hover:bg-white/20 py-2 px-4 rounded-lg text-sm">Voltar</button></div>
+          <div className="bg-white rounded-b-3xl shadow-lg p-4 min-h-[500px]">{loading ? <div className="text-center py-10 text-slate-400">Carregando...</div> : tarefas.length === 0 ? <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200"><p className="text-slate-500 font-medium">Tudo limpo por hoje!</p></div> : (<div className="space-y-4">{tarefas.map((tarefa) => { const isCompleted = tarefa.status === 'COMPLETED'; const isPostponed = tarefa.status === 'POSTPONED'; const isCanceled = tarefa.status === 'CANCELED'; let cardClass = "border-slate-100 bg-white"; if (isCompleted) cardClass = "border-green-200 bg-green-50 opacity-75"; if (isPostponed) cardClass = "border-amber-200 bg-amber-50"; if (isCanceled) cardClass = "border-red-200 bg-red-50 opacity-60"; return (<div key={tarefa.id} className={`p-4 rounded-xl border-2 transition-all ${cardClass}`}><div className="mb-4"><h4 className={`text-lg font-bold flex items-center gap-2 ${isCompleted || isCanceled ? 'line-through text-slate-400' : 'text-slate-700'}`}>{tarefa.template?.title}{isPostponed && <span className="text-xs bg-amber-200 text-amber-800 px-2 py-1 rounded-full">Adiado</span>}{isCanceled && <span className="text-xs bg-red-200 text-red-800 px-2 py-1 rounded-full">Cancelado</span>}</h4><p className="text-sm text-slate-500 mb-1">{tarefa.template?.description}</p></div>{!isCanceled && (<div className="flex gap-2 flex-wrap"><button onClick={(e) => handleConcluir(e, tarefa)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-bold transition-colors ${isCompleted ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-green-100'}`}><CheckCircle size={18} /> {isCompleted ? "Feito" : "Concluir"}</button>{!isCompleted && <button onClick={(e) => abrirModalAdiar(e, tarefa)} className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-amber-100"><Clock size={18} /> Adiar</button>}{!isCompleted && <button onClick={(e) => abrirModalCancelar(e, tarefa)} className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-bold bg-slate-100 text-slate-600 hover:bg-red-100"><XCircle size={18} /> Cancelar</button>}</div>)}</div>); })}</div>)}</div></div>
       )}
-      
-      {/* MODAIS QUIOSQUE (MANTIDOS) */}
-      {modalAdiarOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-slate-800 mb-4">Adiar Tarefa</h3><input type="datetime-local" className="w-full border-2 border-slate-200 rounded-lg p-3 text-lg mb-6" value={novaDataPrazo} onChange={(e) => setNovaDataPrazo(e.target.value)} /><div className="flex gap-3"><button onClick={() => setModalAdiarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Voltar</button><button onClick={confirmarAdiamento} className="flex-1 py-3 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 shadow-md">Confirmar</button></div></div></div>)}
-      {modalCancelarOpen && (<div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md"><h3 className="text-xl font-bold text-slate-800 mb-4">Cancelar Tarefa</h3><textarea className="w-full border-2 border-slate-200 rounded-lg p-3 mb-6 min-h-[100px]" placeholder="Motivo..." value={justificativa} onChange={(e) => setJustificativa(e.target.value)} /><div className="flex gap-3"><button onClick={() => setModalCancelarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-lg">Voltar</button><button onClick={confirmarCancelamento} className="flex-1 py-3 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 shadow-md">Confirmar</button></div></div></div>)}
     </div>
   );
 }
