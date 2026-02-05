@@ -1,21 +1,31 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { ArrowLeft, ClipboardCheck, CheckCircle, RefreshCcw } from "lucide-react";
+import { ArrowLeft, ClipboardCheck, CheckCircle, RefreshCcw, Camera, X } from "lucide-react";
 
 export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
+  // --- ESTADOS ---
   const [tarefasParaRevisar, setTarefasParaRevisar] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Estado para Devolução
   const [modalDevolverOpen, setModalDevolverOpen] = useState(false);
   const [tarefaParaDevolver, setTarefaParaDevolver] = useState(null);
   const [feedbackGestor, setFeedbackGestor] = useState("");
 
+  // NOVO: Estado para Visualização de Foto
+  const [fotoParaVisualizar, setFotoParaVisualizar] = useState(null);
+
+  // --- EFEITOS ---
   useEffect(() => {
     buscarTarefasParaRevisar();
   }, []);
 
+  // --- FUNÇÕES DE BUSCA ---
   async function buscarTarefasParaRevisar() {
     setLoading(true);
     const hoje = new Date().toISOString().split('T')[0];
+    
+    // Busca subordinados diretos
     const { data: subs } = await supabase.from('employee').select('id').eq('manager_id', usuarioAtual.id);
     const idsSubs = subs?.map(s => s.id) || [];
 
@@ -37,6 +47,7 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
     setLoading(false);
   }
 
+  // --- AÇÕES ---
   async function confirmarAprovacao(tarefa) {
     const { error } = await supabase.from('checklist_items').update({ 
       status: 'COMPLETED', 
@@ -70,8 +81,11 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
     }
   }
 
+  // --- RENDERIZAÇÃO ---
   return (
     <div className="w-full max-w-4xl animate-fade-in mx-auto mt-8 px-4">
+      
+      {/* CABEÇALHO */}
       <div className="flex items-center justify-between mb-8">
         <button onClick={onBack} className="flex items-center gap-2 text-slate-500 font-black uppercase tracking-tighter hover:text-blue-600">
           <ArrowLeft /> Voltar ao Quiosque
@@ -84,6 +98,7 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
         </div>
       </div>
       
+      {/* LISTA DE TAREFAS */}
       <div className="bg-white rounded-3xl shadow-xl p-6 min-h-[500px]">
         {loading ? (
           <div className="text-center py-20 text-slate-400">Carregando tarefas para revisar...</div>
@@ -96,6 +111,8 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
           <div className="space-y-6">
             {tarefasParaRevisar.map(t => (
               <div key={t.id} className="p-6 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-50">
+                
+                {/* INFO DA TAREFA */}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">Enviado por:</span>
@@ -103,7 +120,19 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                   </div>
                   <h4 className="text-xl font-black text-slate-900 leading-tight">{t.template?.title}</h4>
                   <p className="text-slate-500 text-sm mt-1">{t.template?.description}</p>
+                  
+                  {/* NOVO: BOTÃO DE VER FOTO (SE HOUVER) */}
+                  {t.evidence_image_url && (
+                    <button 
+                        onClick={() => setFotoParaVisualizar(t.evidence_image_url)}
+                        className="mt-3 flex items-center gap-2 text-sm font-bold text-purple-600 bg-purple-50 px-3 py-2 rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors"
+                    >
+                        <Camera size={18} /> Ver Foto da Evidência
+                    </button>
+                  )}
                 </div>
+
+                {/* BOTÕES DE AÇÃO */}
                 <div className="flex gap-3 w-full md:w-auto">
                   <button onClick={() => abrirModalDevolver(t)} className="flex-1 md:flex-none py-3 px-6 rounded-xl font-bold bg-white text-slate-600 hover:bg-orange-100 hover:text-orange-700 transition-all flex items-center justify-center gap-2 border border-slate-200 shadow-sm">
                     <RefreshCcw size={18}/> Devolver
@@ -120,8 +149,8 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
 
       {/* MODAL DEVOLVER */}
       {modalDevolverOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md animate-fade-in">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md">
             <h3 className="text-2xl font-black text-slate-900 mb-2 flex items-center gap-2"><RefreshCcw className="text-orange-500"/> Devolver Tarefa</h3>
             <p className="text-slate-500 text-sm mb-6">Explique ao colaborador o motivo da devolução.</p>
             <textarea 
@@ -137,6 +166,36 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
           </div>
         </div>
       )}
+
+      {/* NOVO: MODAL VISUALIZAR FOTO */}
+      {fotoParaVisualizar && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[60] backdrop-blur-sm animate-fade-in" onClick={() => setFotoParaVisualizar(null)}>
+            <div className="relative max-w-4xl max-h-screen" onClick={(e) => e.stopPropagation()}>
+                <button 
+                    onClick={() => setFotoParaVisualizar(null)}
+                    className="absolute -top-12 right-0 text-white hover:text-slate-300 transition-colors"
+                >
+                    <X size={32} />
+                </button>
+                <img 
+                    src={fotoParaVisualizar} 
+                    alt="Evidência" 
+                    className="max-w-full max-h-[80vh] rounded-lg shadow-2xl border-4 border-white"
+                />
+                <div className="text-center mt-4">
+                    <a 
+                        href={fotoParaVisualizar} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-white underline text-sm hover:text-blue-300"
+                    >
+                        Abrir original em nova aba
+                    </a>
+                </div>
+            </div>
+        </div>
+      )}
+
     </div>
   );
 }
