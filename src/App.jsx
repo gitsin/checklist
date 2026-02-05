@@ -61,7 +61,8 @@ export default function App() {
   }, []);
 
   async function buscarLojas() {
-    const { data } = await supabase.from("stores").select("*").order('name');
+    // CORREÇÃO: Filtra apenas lojas ativas
+    const { data } = await supabase.from("stores").select("*").eq("active", true).order('name');
     setLojas(data || []);
   }
 
@@ -391,7 +392,7 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAIS ADIAR, CANCELAR E FOTO - MANTIDOS IGUAIS */}
+      {/* MODAL ADIAR */}
       {modalAdiarOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
@@ -405,6 +406,7 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL CANCELAR */}
       {modalCancelarOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl">
@@ -418,6 +420,7 @@ export default function App() {
         </div>
       )}
 
+      {/* NOVO MODAL: CÂMERA/FOTO */}
       {modalFotoOpen && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 animate-fade-in backdrop-blur-sm">
             <div className="bg-white p-6 rounded-3xl w-full max-w-md shadow-2xl">
