@@ -41,16 +41,12 @@ export default function AdminArea({ onExit }) {
   const [listaTemplates, setListaTemplates] = useState([]);
   const [filtroLojaTarefa, setFiltroLojaTarefa] = useState("");
   const [filtroCargoTarefa, setFiltroCargoTarefa] = useState("");
-  
-  // Estado específico para os cargos DO FILTRO DA TELA (dinâmico)
-  const [cargosFiltroDisponiveis, setCargosFiltroDisponiveis] = useState([]);
-
   const [modalNovaTarefaOpen, setModalNovaTarefaOpen] = useState(false);
   const [modalEditarTarefaOpen, setModalEditarTarefaOpen] = useState(false);
   const [novaTarefa, setNovaTarefa] = useState({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false });
   const [editTarefa, setEditTarefa] = useState(null);
   
-  // Estado específico para os cargos DO MODAL (criação/edição)
+  // CORREÇÃO DO ERRO: Estado unificado para cargos em modais de tarefa
   const [cargosDisponiveis, setCargosDisponiveis] = useState([]); 
   
   const [gerandoRotina, setGerandoRotina] = useState(false);
@@ -170,58 +166,24 @@ export default function AdminArea({ onExit }) {
   // ==========================
   // LÓGICA DE TAREFAS
   // ==========================
-  
-  // Função que carrega APENAS os cargos que existem na loja selecionada para o filtro
-  async function carregarCargosDoFiltro(lojaId) {
-    // Limpa o cargo selecionado anteriormente para evitar inconsistência
-    setFiltroCargoTarefa(""); 
-    
-    if (!lojaId) { 
-        setCargosFiltroDisponiveis([]); 
-        return; 
-    }
-
-    // Busca funcionários ATIVOS dessa loja
-    const { data: emps } = await supabase.from("employee").select("role_id").eq("store_id", lojaId).eq("active", true);
-    const rIds = [...new Set(emps?.map(e => e.role_id) || [])];
-    
-    if (rIds.length > 0) {
-      // Filtra a lista global de roles para pegar apenas os que estão em uso E ativos
-      const rolesFiltrados = roles.filter(r => rIds.includes(r.id) && r.active);
-      setCargosFiltroDisponiveis(rolesFiltrados);
-    } else {
-      setCargosFiltroDisponiveis([]);
-    }
-  }
-
   async function buscarTarefas() {
-    if (!filtroLojaTarefa) {
-        setListaTemplates([]); // Se não tem loja, não mostra nada
-        return;
-    }
+    if (!filtroLojaTarefa) return;
     let q = supabase.from("task_templates").select(`*, stores(name), roles(name)`).eq("store_id", filtroLojaTarefa).order("created_at", { ascending: false });
-    
-    if (filtroCargoTarefa && filtroCargoTarefa !== "") {
-        q = q.eq("role_id", filtroCargoTarefa);
-    }
-    
+    if (filtroCargoTarefa) q = q.eq("role_id", filtroCargoTarefa);
     const { data, error } = await q;
     if (error) alert(error.message); else setListaTemplates(data || []);
   }
 
-  useEffect(() => { 
-    if (screen === 'tarefas') buscarTarefas(); 
-  }, [filtroLojaTarefa, filtroCargoTarefa]);
+  useEffect(() => { if (screen === 'tarefas') buscarTarefas(); }, [filtroLojaTarefa, filtroCargoTarefa]);
 
-  // Função para os MODAIS (Nova/Editar Tarefa) - Mesma lógica, estado diferente
-  async function carregarCargosParaModal(lojaId) {
+  // Função genérica para carregar cargos da loja selecionada (Nova ou Edição)
+  async function carregarCargos(lojaId) {
     if (!lojaId) { setCargosDisponiveis([]); return; }
     const { data: emps } = await supabase.from("employee").select("role_id").eq("store_id", lojaId).eq("active", true);
     const rIds = [...new Set(emps?.map(e => e.role_id) || [])];
-    
     if (rIds.length > 0) {
-      const rolesFiltrados = roles.filter(r => rIds.includes(r.id) && r.active);
-      setCargosDisponiveis(rolesFiltrados);
+      const { data: r } = await supabase.from("roles").select("*").in("id", rIds);
+      setCargosDisponiveis(r || []);
     } else {
       setCargosDisponiveis([]);
     }
@@ -419,27 +381,9 @@ export default function AdminArea({ onExit }) {
                <button onClick={() => { setNovoColab({nome:"", loja:"", cargo:"", gestor:""}); setModalNovoColabOpen(true); }} className="bg-blue-600 px-4 py-2 rounded font-bold hover:bg-blue-500 shadow flex items-center gap-2"><Plus size={18}/> Novo</button>
             </div>
             <div className="flex flex-col md:flex-row gap-4 mb-6 bg-slate-700 p-4 rounded border border-slate-600">
-                <div className="flex-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Loja</label>
-                    <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLoja} onChange={e => setFiltroLoja(e.target.value)}>
-                        <option value="">Todas</option>
-                        {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                    </select>
-                </div>
-                <div className="flex-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Cargo</label>
-                    <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroCargo} onChange={e => setFiltroCargo(e.target.value)}>
-                        <option value="">Todos</option>
-                        {roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                </div>
-                <div className="flex-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Gestor</label>
-                    <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroGestor} onChange={e => setFiltroGestor(e.target.value)}>
-                        <option value="">Todos</option>
-                        {[...new Set(listaFuncionarios.filter(f=>f.manager_id).map(f=>f.manager_id))].map(mid => { const g = listaFuncionarios.find(x => x.id === mid) || listaFuncionarios.find(x => x.manager_id === mid)?.manager; return g ? <option key={mid} value={mid}>{g.full_name}</option> : null })}
-                    </select>
-                </div>
+                <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-400">Loja</label><select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLoja} onChange={e => {setFiltroLoja(e.target.value); setTimeout(buscarColaboradores, 100)}}><option value="">Todas</option>{lojas.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
+                <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-400">Cargo</label><select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroCargo} onChange={e => {setFiltroCargo(e.target.value); setTimeout(buscarColaboradores, 100)}}><option value="">Todos</option>{roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+                <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-400">Gestor</label><select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroGestor} onChange={e => {setFiltroGestor(e.target.value); setTimeout(buscarColaboradores, 100)}}><option value="">Todos</option>{[...new Set(listaFuncionarios.filter(f=>f.manager_id).map(f=>f.manager_id))].map(mid => { const g = listaFuncionarios.find(x => x.id === mid) || listaFuncionarios.find(x => x.manager_id === mid)?.manager; return g ? <option key={mid} value={mid}>{g.full_name}</option> : null })}</select></div>
             </div>
             <div className="grid md:grid-cols-2 gap-4">
                 {listaFuncionarios.map(f => (
@@ -475,32 +419,8 @@ export default function AdminArea({ onExit }) {
                     </div>
                 </div>
                 <div className="flex gap-4 mb-6 bg-slate-700 p-4 rounded border border-slate-600">
-                    <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Loja</label>
-                        <select 
-                            className="bg-slate-800 p-2 rounded w-full border border-slate-500" 
-                            value={filtroLojaTarefa} 
-                            onChange={e => {
-                                setFiltroLojaTarefa(e.target.value); 
-                                carregarCargosDoFiltro(e.target.value);
-                            }}
-                        >
-                            <option value="">Selecione a Loja...</option>
-                            {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                        </select>
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Cargo</label>
-                        <select 
-                            className="bg-slate-800 p-2 rounded w-full border border-slate-500 disabled:opacity-50" 
-                            value={filtroCargoTarefa} 
-                            onChange={e => setFiltroCargoTarefa(e.target.value)}
-                            disabled={!filtroLojaTarefa}
-                        >
-                            <option value="">Todos Cargos</option>
-                            {cargosFiltroDisponiveis.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
-                    </div>
+                    <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Loja</label><select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLojaTarefa} onChange={e => {setFiltroLojaTarefa(e.target.value); setTimeout(buscarTarefas, 100)}}><option value="">Selecione a Loja...</option>{lojas.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
+                    <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Cargo</label><select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroCargoTarefa} onChange={e => {setFiltroCargoTarefa(e.target.value); setTimeout(buscarTarefas, 100)}}><option value="">Todos Cargos</option>{roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
                 </div>
                 <div className="grid gap-3">
                     {listaTemplates.map(t => (
@@ -514,7 +434,7 @@ export default function AdminArea({ onExit }) {
                                 <button onClick={() => toggleStatusTarefa(t)}>{t.active ? <ToggleRight className="text-green-600" size={28}/> : <ToggleLeft size={28}/>}</button>
                                 <button onClick={() => { 
                                     setEditTarefa(t); 
-                                    carregarCargosParaModal(t.store_id); 
+                                    carregarCargos(t.store_id); 
                                     setModalEditarTarefaOpen(true); 
                                 }} className="text-blue-600 p-2 hover:bg-blue-50 rounded-full"><Pencil size={18}/></button>
                             </div>
@@ -556,7 +476,7 @@ export default function AdminArea({ onExit }) {
             </div>
         )}
 
-        {/* MODAL EDITAR LOJA */}
+        {/* MODAL EDITAR LOJA (CORRIGIDO: LABELS VISÍVEIS) */}
         {modalEditarLojaOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white p-6 rounded-lg w-full max-w-md text-slate-800">
@@ -579,7 +499,7 @@ export default function AdminArea({ onExit }) {
             </div>
         )}
 
-        {/* MODAL EDITAR CARGO */}
+        {/* MODAL EDITAR CARGO (CORRIGIDO: LABELS VISÍVEIS) */}
         {modalEditarCargoOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white p-6 rounded-lg w-full max-w-md text-slate-800">
@@ -598,7 +518,7 @@ export default function AdminArea({ onExit }) {
             </div>
         )}
 
-        {/* MODAL NOVO COLABORADOR */}
+        {/* MODAL NOVO COLABORADOR (CORRIGIDO: LABELS VISÍVEIS) */}
         {modalNovoColabOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white p-6 rounded-lg w-full max-w-md text-slate-800">
@@ -610,11 +530,11 @@ export default function AdminArea({ onExit }) {
                     <div className="grid grid-cols-2 gap-4 mb-3">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                            <select className="border p-2 w-full rounded bg-white" onChange={e => {setNovoColab({...novoColab, loja: e.target.value}); carregarGestores(e.target.value)}}><option value="">Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                            <select className="border p-2 w-full rounded bg-white" onChange={e => {setNovoColab({...novoColab, loja: e.target.value}); carregarGestores(e.target.value)}}><option value="">Selecione...</option>{lojas.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
-                            <select className="border p-2 w-full rounded bg-white" onChange={e => setNovoColab({...novoColab, cargo: e.target.value})}><option value="">Selecione...</option>{roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+                            <select className="border p-2 w-full rounded bg-white" onChange={e => setNovoColab({...novoColab, cargo: e.target.value})}><option value="">Selecione...</option>{roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                         </div>
                     </div>
                     <div className="mb-4">
@@ -627,7 +547,7 @@ export default function AdminArea({ onExit }) {
             </div>
         )}
 
-        {/* MODAL EDITAR COLABORADOR */}
+        {/* MODAL EDITAR COLABORADOR (CORRIGIDO: LABELS VISÍVEIS) */}
         {modalEditarColabOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white p-6 rounded-lg w-full max-w-md text-slate-800">
@@ -639,11 +559,11 @@ export default function AdminArea({ onExit }) {
                     <div className="grid grid-cols-2 gap-4 mb-3">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                            <select className="border p-2 w-full rounded bg-white" value={editColab.loja} onChange={e => {setEditColab({...editColab, loja: e.target.value}); carregarGestores(e.target.value)}}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                            <select className="border p-2 w-full rounded bg-white" value={editColab.loja} onChange={e => {setEditColab({...editColab, loja: e.target.value}); carregarGestores(e.target.value)}}><option>Selecione...</option>{lojas.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
-                            <select className="border p-2 w-full rounded bg-white" value={editColab.cargo} onChange={e => setEditColab({...editColab, cargo: e.target.value})}><option>Selecione...</option>{roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+                            <select className="border p-2 w-full rounded bg-white" value={editColab.cargo} onChange={e => setEditColab({...editColab, cargo: e.target.value})}><option>Selecione...</option>{roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                         </div>
                     </div>
                     <div className="mb-4">
@@ -656,7 +576,7 @@ export default function AdminArea({ onExit }) {
             </div>
         )}
 
-        {/* MODAL NOVA TAREFA */}
+        {/* MODAL NOVA TAREFA (CORRIGIDO: LABELS VISÍVEIS + VARIÁVEL FIX) */}
         {modalNovaTarefaOpen && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white p-6 rounded-lg w-full max-w-lg text-slate-800">
@@ -664,7 +584,7 @@ export default function AdminArea({ onExit }) {
                     <div className="grid grid-cols-2 gap-4 mb-3">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                            <select className="border p-2 w-full rounded bg-white" onChange={e => {setNovaTarefa({...novaTarefa, loja: e.target.value}); carregarCargosParaModal(e.target.value)}}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                            <select className="border p-2 w-full rounded bg-white" onChange={e => {setNovaTarefa({...novaTarefa, loja: e.target.value}); carregarCargos(e.target.value)}}><option>Selecione...</option>{lojas.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo Responsável</label>
@@ -699,7 +619,7 @@ export default function AdminArea({ onExit }) {
             </div>
         )}
 
-        {/* MODAL EDITAR TAREFA */}
+        {/* MODAL EDITAR TAREFA (CORRIGIDO: LABELS VISÍVEIS) */}
         {modalEditarTarefaOpen && editTarefa && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                 <div className="bg-white p-6 rounded-lg w-full max-w-lg text-slate-800">
@@ -707,7 +627,7 @@ export default function AdminArea({ onExit }) {
                     <div className="grid grid-cols-2 gap-4 mb-3">
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                            <select className="border p-2 w-full rounded bg-white" value={editTarefa.store_id} onChange={e => {setEditTarefa({...editTarefa, store_id: e.target.value}); carregarCargosParaModal(e.target.value)}}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select>
+                            <select className="border p-2 w-full rounded bg-white" value={editTarefa.store_id} onChange={e => {setEditTarefa({...editTarefa, store_id: e.target.value}); carregarCargos(e.target.value)}}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo Responsável</label>
