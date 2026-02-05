@@ -92,21 +92,45 @@ export default function App() {
     const hoje = new Date().toISOString().split('T')[0];
     const { data } = await supabase.from("checklist_items")
       .select(`*, template:task_templates!inner ( title, description, requires_photo_evidence, frequency_type, specific_day_of_week, specific_day_of_month, due_time )`)
-      .eq("store_id", storeId).eq("scheduled_date", hoje).eq("template.role_id", roleId);
+      .eq("store_id", storeId)
+      .eq("scheduled_date", hoje) 
+      .eq("template.role_id", roleId);
     
     const ordensStatus = { 'RETURNED': 1, 'PENDING': 2, 'POSTPONED': 2, 'WAITING_APPROVAL': 3, 'COMPLETED': 5, 'CANCELED': 6 };
+    
     const tarefasOrdenadas = (data || []).sort((a, b) => {
         const sA = ordensStatus[a.status] || 99;
         const sB = ordensStatus[b.status] || 99;
         if (sA !== sB) return sA - sB;
+        
         const getEffectiveTime = (item) => {
             if (item.status === 'POSTPONED' && item.postponed_to) return new Date(item.postponed_to).toTimeString().slice(0,5); 
             return item.template.due_time || "23:59";
         }
         return getEffectiveTime(a).localeCompare(getEffectiveTime(b));
     });
+    
     setTarefas(tarefasOrdenadas);
     setLoading(false);
+  }
+
+  function verificarAtraso(tarefa) {
+    if (['COMPLETED', 'WAITING_APPROVAL', 'RETURNED', 'CANCELED'].includes(tarefa.status)) return false;
+
+    if (tarefa.status === 'POSTPONED' && tarefa.postponed_to) {
+        return now > new Date(tarefa.postponed_to);
+    }
+
+    const hojeStr = now.toLocaleDateString('en-CA');
+    const tarefaData = tarefa.scheduled_date;
+
+    if (tarefaData < hojeStr) return true; 
+    if (tarefaData > hojeStr) return false; 
+
+    const dueTimeStr = tarefa.template.due_time || "23:59";
+    const currentTimeStr = now.toTimeString().slice(0, 5);
+    
+    return currentTimeStr > dueTimeStr;
   }
 
   function handleConcluirClick(tarefa) {
@@ -139,7 +163,11 @@ export default function App() {
   }
 
   async function executarConclusao(tarefa, fotoUrl) {
-    let novoStatus = (tarefa.status === 'PENDING' || tarefa.status === 'RETURNED' || tarefa.status === 'POSTPONED') ? (usuarioAtual.manager_id ? 'WAITING_APPROVAL' : 'COMPLETED') : 'PENDING';
+    // Se tem gestor, vai para WAITING_APPROVAL. Se é Diretor (sem gestor), vai direto para COMPLETED.
+    let novoStatus = (tarefa.status === 'PENDING' || tarefa.status === 'RETURNED' || tarefa.status === 'POSTPONED') 
+      ? (usuarioAtual.manager_id ? 'WAITING_APPROVAL' : 'COMPLETED') 
+      : 'PENDING';
+
     const updateData = {
       status: novoStatus,
       completed_by_employee_id: novoStatus !== 'PENDING' ? usuarioAtual.id : null,
@@ -181,8 +209,18 @@ export default function App() {
 
   async function confirmarCancelamento() {
     if (!justificativa) return;
-    await supabase.from("checklist_items").update({ status: 'CANCELED', cancellation_reason: justificativa }).eq("id", tarefaParaAcao.id);
-    setModalCancelarOpen(false); buscarTarefasDoDia(lojaAtual.id, usuarioAtual.role_id);
+    
+    // AGORA O CANCELAMENTO TAMBÉM VAI PARA REVISÃO SE TIVER GESTOR
+    const novoStatus = usuarioAtual.manager_id ? 'WAITING_APPROVAL' : 'CANCELED';
+
+    await supabase.from("checklist_items").update({ 
+        status: novoStatus, 
+        cancellation_reason: justificativa,
+        completed_by_employee_id: usuarioAtual.id // Registra quem solicitou
+    }).eq("id", tarefaParaAcao.id);
+    
+    setModalCancelarOpen(false); 
+    buscarTarefasDoDia(lojaAtual.id, usuarioAtual.role_id);
   }
 
   if (view === 'admin') return <AdminArea onExit={() => setView('kiosk')} />;
@@ -246,13 +284,14 @@ export default function App() {
                             const isCompleted = t.status === 'COMPLETED';
                             const isWaiting = t.status === 'WAITING_APPROVAL';
                             const isReturned = t.status === 'RETURNED';
+                            const isCanceled = t.status === 'CANCELED';
                             const isPostponed = t.status === 'POSTPONED';
-                            const currentTimeStr = now.toTimeString().slice(0, 5);
-                            const dueTimeStr = isPostponed && t.postponed_to ? new Date(t.postponed_to).toTimeString().slice(0,5) : (t.template.due_time || "23:59");
-                            const isOverdue = !isCompleted && !isWaiting && !isReturned && (currentTimeStr > dueTimeStr);
+                            
+                            const isOverdue = verificarAtraso(t);
 
                             let cardClass = "border-slate-100 bg-white";
                             if (isCompleted) cardClass = "border-green-200 bg-green-50 opacity-75";
+                            if (isCanceled) cardClass = "border-slate-200 bg-slate-100 opacity-60"; // Estilo para Cancelada
                             if (isWaiting) cardClass = "border-blue-200 bg-blue-50 opacity-90";
                             if (isReturned) cardClass = "border-orange-300 bg-orange-50 shadow-md";
                             if (isPostponed) cardClass = "border-purple-200 bg-purple-50 shadow-sm";
@@ -262,14 +301,18 @@ export default function App() {
                                 <div key={t.id} className={`p-4 rounded-xl border-2 transition-all ${cardClass}`}>
                                     <div className="mb-3">
                                         <div className="flex justify-between items-start">
-                                            <h4 className={`font-bold text-lg flex items-center gap-2 ${isCompleted ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                            <h4 className={`font-bold text-lg flex items-center gap-2 ${isCompleted || isCanceled ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                                                 {isReturned && <AlertTriangle className="text-orange-600" size={20} />}
                                                 {isPostponed && <CalendarClock className="text-purple-600" size={20} />}
                                                 {isOverdue && <AlertCircle className="text-red-600 animate-pulse" size={20} />}
-                                                {t.template.requires_photo_evidence && !isCompleted && <Camera size={20} className="text-purple-600" />}
+                                                {t.template.requires_photo_evidence && !isCompleted && !isCanceled && <Camera size={20} className="text-purple-600" />}
                                                 {t.template.title}
                                             </h4>
                                             <div className="flex gap-1 flex-col items-end">
+                                                {/* NOVAS ETIQUETAS APROVADAS */}
+                                                {isCompleted && <span className="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded-full uppercase font-black flex items-center gap-1 border border-green-200"><CheckCircle size={10}/> Concluída e Aprovada</span>}
+                                                {isCanceled && <span className="bg-slate-200 text-slate-600 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-slate-300">Cancelada e Aprovada</span>}
+                                                
                                                 {isWaiting && <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-1 rounded-full uppercase font-black">Em Revisão</span>}
                                                 {isReturned && <span className="bg-orange-100 text-orange-800 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-orange-200">Devolvida</span>}
                                                 {isPostponed && <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-purple-200">Adiada</span>}
@@ -290,7 +333,7 @@ export default function App() {
                                         <p className="text-sm text-slate-500 mt-1">{t.template.description}</p>
                                         {isReturned && t.manager_notes && (<div className="mt-3 p-3 bg-orange-100 border border-orange-200 rounded-lg text-sm text-orange-900 italic flex gap-2"><MessageSquare size={16}/><span><strong>Feedback:</strong> {t.manager_notes}</span></div>)}
                                     </div>
-                                    {!isCompleted && !isWaiting && (
+                                    {!isCompleted && !isWaiting && !isCanceled && (
                                         <div className="flex flex-col gap-3 mt-4">
                                             <button onClick={() => handleConcluirClick(t)} className={`w-full py-4 rounded-xl font-bold flex justify-center items-center gap-2 text-lg transition-all active:scale-95 shadow-sm ${isReturned ? 'bg-orange-500 text-white shadow-orange-200' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
                                                 {t.template.requires_photo_evidence ? <Camera size={20}/> : (isReturned ? <RefreshCcw size={20}/> : <CheckCircle size={20}/>)} 
@@ -312,7 +355,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL PADRÃO DE SCROLL (Fix para Tablet) */}
       {modalAdiarOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4">

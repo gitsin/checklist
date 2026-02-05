@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { 
   ArrowLeft, ClipboardCheck, CheckCircle, RefreshCcw, Camera, X, 
-  AlertCircle, Clock, CalendarClock, Users 
+  AlertCircle, Clock, CalendarClock, Users, XCircle 
 } from "lucide-react";
 
 export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
@@ -42,30 +42,65 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
 
     const { data, error } = await supabase
       .from('checklist_items')
-      .select(`*, template:task_templates!inner ( title, description, due_time, role_id ), employee:employee!completed_by_employee_id ( full_name )`) 
+      .select(`*, template:task_templates!inner ( title, description, due_time, role_id, frequency_type, specific_day_of_month ), employee:employee!completed_by_employee_id ( full_name )`) 
       .eq('store_id', lojaAtual.id).eq('scheduled_date', hoje); 
 
     if (error) { alert("Erro: " + error.message); setLoading(false); return; }
 
     const listaRevisao = [];
     const listaAtrasadas = [];
-    const horaAtualStr = new Date().toTimeString().slice(0, 5);
+    const hojeStr = new Date().toLocaleDateString('en-CA');
+    const currentTimeStr = new Date().toTimeString().slice(0, 5);
 
     data.forEach(item => {
+        // REVISÃO (Inclui Conclusões e Cancelamentos)
         if (item.status === 'WAITING_APPROVAL' && idsSubs.includes(item.completed_by_employee_id)) {
             listaRevisao.push(item);
         }
+
+        // ATRASO
         const isPendente = ['PENDING', 'POSTPONED', 'RETURNED'].includes(item.status);
-        const horaLimite = item.status === 'POSTPONED' && item.postponed_to ? new Date(item.postponed_to).toTimeString().slice(0,5) : item.template.due_time;
-        if (isPendente && horaLimite && horaAtualStr > horaLimite) {
-            if (mapa[item.template.role_id]) { listaAtrasadas.push({ ...item, horaLimiteEfetiva: horaLimite }); }
+        let isAtrasada = false;
+        let horaLimiteShow = "";
+
+        if (isPendente) {
+            if (item.status === 'POSTPONED' && item.postponed_to) {
+                const ppDate = new Date(item.postponed_to);
+                isAtrasada = new Date() > ppDate;
+                horaLimiteShow = ppDate.toTimeString().slice(0,5);
+            } 
+            else {
+                const itemData = item.scheduled_date; 
+                if (itemData < hojeStr) {
+                    isAtrasada = true; 
+                } else if (itemData === hojeStr) {
+                    const limit = item.template.due_time || "23:59";
+                    if (currentTimeStr > limit) isAtrasada = true;
+                    horaLimiteShow = limit;
+                }
+            }
+        }
+
+        if (isAtrasada) {
+            if (mapa[item.template.role_id]) { 
+                listaAtrasadas.push({ ...item, horaLimiteEfetiva: horaLimiteShow || "23:59" }); 
+            }
         }
     });
     setTarefasRevisao(listaRevisao); setTarefasAtrasadas(listaAtrasadas); setLoading(false);
   }
 
+  // --- APROVAÇÃO INTELIGENTE (Conclusão ou Cancelamento) ---
   async function confirmarAprovacao(tarefa) {
-    const { error } = await supabase.from('checklist_items').update({ status: 'COMPLETED', reviewed_at: new Date().toISOString(), reviewed_by_id: usuarioAtual.id }).eq('id', tarefa.id);
+    // Se tiver motivo de cancelamento, o destino é CANCELED. Se não, é COMPLETED.
+    const novoStatus = tarefa.cancellation_reason ? 'CANCELED' : 'COMPLETED';
+
+    const { error } = await supabase.from('checklist_items').update({ 
+        status: novoStatus, 
+        reviewed_at: new Date().toISOString(), 
+        reviewed_by_id: usuarioAtual.id 
+    }).eq('id', tarefa.id);
+
     if (error) alert(error.message); else buscarDadosGestao();
   }
 
@@ -107,32 +142,58 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                     <p className="font-bold text-sm">Tudo revisado!</p>
                 </div>
             ) : (
-                tarefasRevisao.map(t => (
-                    <div key={t.id} className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm flex flex-col gap-2 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                        <div className="pl-3 flex justify-between items-start">
-                            <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-sm text-slate-800 truncate">{t.template?.title}</h4>
-                                <div className="flex items-center gap-1 mt-0.5">
-                                    <span className="text-[10px] text-slate-400 uppercase font-bold">Feito por:</span>
-                                    <span className="text-xs font-bold text-blue-700 bg-blue-50 px-1.5 rounded">{t.employee?.full_name}</span>
+                tarefasRevisao.map(t => {
+                    // Detecta se é um pedido de Cancelamento
+                    const isCancellationRequest = !!t.cancellation_reason;
+
+                    return (
+                        <div key={t.id} className={`bg-white p-3 rounded-xl border shadow-sm flex flex-col gap-2 relative overflow-hidden ${isCancellationRequest ? 'border-red-200 bg-red-50/30' : 'border-blue-100'}`}>
+                            <div className={`absolute top-0 left-0 w-1 h-full ${isCancellationRequest ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                            
+                            <div className="pl-3 flex justify-between items-start">
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="font-bold text-sm text-slate-800 truncate">{t.template?.title}</h4>
+                                    
+                                    {/* ETIQUETA ESPECIAL DE CANCELAMENTO */}
+                                    {isCancellationRequest && (
+                                        <div className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black uppercase border border-red-200 my-1">
+                                            <XCircle size={12}/> Solicitação de Cancelamento
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                        <span className="text-[10px] text-slate-400 uppercase font-bold">Solicitante:</span>
+                                        <span className="text-xs font-bold text-blue-700 bg-blue-50 px-1.5 rounded">{t.employee?.full_name}</span>
+                                    </div>
+
+                                    {/* Exibe Justificativa se houver */}
+                                    {t.cancellation_reason && (
+                                        <div className="mt-2 bg-red-50 border border-red-100 p-2 rounded text-xs text-red-800 italic">
+                                            "{t.cancellation_reason}"
+                                        </div>
+                                    )}
                                 </div>
+                                {t.evidence_image_url && (
+                                    <button onClick={() => setFotoParaVisualizar(t.evidence_image_url)} className="ml-2 text-purple-600 bg-purple-50 p-2 rounded-lg hover:bg-purple-100 active:scale-95">
+                                        <Camera size={20} />
+                                    </button>
+                                )}
                             </div>
-                            {t.evidence_image_url && (
-                                <button onClick={() => setFotoParaVisualizar(t.evidence_image_url)} className="ml-2 text-purple-600 bg-purple-50 p-2 rounded-lg hover:bg-purple-100 active:scale-95">
-                                    <Camera size={20} />
+                            <div className="pl-3 flex gap-2 mt-1">
+                                <button onClick={() => {setTarefaParaDevolver(t); setFeedbackGestor(""); setModalDevolverOpen(true)}} className="flex-1 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 active:scale-95">Devolver</button>
+                                
+                                {/* Botão adapta o texto dependendo da ação */}
+                                <button onClick={() => confirmarAprovacao(t)} className={`flex-1 py-2 rounded-lg text-xs font-bold text-white shadow-sm active:scale-95 ${isCancellationRequest ? 'bg-red-500 hover:bg-red-600' : 'bg-green-600 hover:bg-green-700'}`}>
+                                    {isCancellationRequest ? 'Aprovar Cancelamento' : 'Aprovar Conclusão'}
                                 </button>
-                            )}
+                            </div>
                         </div>
-                        <div className="pl-3 flex gap-2 mt-1">
-                            <button onClick={() => {setTarefaParaDevolver(t); setFeedbackGestor(""); setModalDevolverOpen(true)}} className="flex-1 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 active:scale-95">Devolver</button>
-                            <button onClick={() => confirmarAprovacao(t)} className="flex-1 py-2 rounded-lg bg-green-600 text-xs font-bold text-white hover:bg-green-700 shadow-sm active:scale-95">Aprovar</button>
-                        </div>
-                    </div>
-                ))
+                    )
+                })
             )
         )}
 
+        {/* ... (ABA ATRASADAS MANTIDA IGUAL AO CÓDIGO ANTERIOR) ... */}
         {!loading && abaAtiva === 'atrasadas' && (
             tarefasAtrasadas.length === 0 ? (
                 <div className="text-center py-12 flex flex-col items-center gap-2 opacity-40">
