@@ -24,9 +24,17 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
     return () => clearInterval(timer);
   }, []);
 
+  // --- CORREÇÃO DE FUSO HORÁRIO ---
+  function getDataLocal() {
+    return new Date().toLocaleDateString('en-CA'); // Retorna YYYY-MM-DD local
+  }
+
   async function buscarDadosGestao() {
     setLoading(true);
-    const hoje = new Date().toISOString().split('T')[0];
+    
+    // CORREÇÃO: Usa data local em vez de UTC
+    const hoje = getDataLocal();
+    
     const { data: subs } = await supabase.from('employee').select('id, full_name, role_id').eq('manager_id', usuarioAtual.id).eq('active', true);
     const idsSubs = subs?.map(s => s.id) || [];
     const mapa = {};
@@ -43,14 +51,16 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
     const { data, error } = await supabase
       .from('checklist_items')
       .select(`*, template:task_templates!inner ( title, description, due_time, role_id, frequency_type, specific_day_of_month ), employee:employee!completed_by_employee_id ( full_name )`) 
-      .eq('store_id', lojaAtual.id).eq('scheduled_date', hoje); 
+      .eq('store_id', lojaAtual.id)
+      .eq('scheduled_date', hoje); // Busca tarefas do dia local correto
 
     if (error) { alert("Erro: " + error.message); setLoading(false); return; }
 
     const listaRevisao = [];
     const listaAtrasadas = [];
-    const hojeStr = new Date().toLocaleDateString('en-CA');
-    const currentTimeStr = new Date().toTimeString().slice(0, 5);
+    
+    const hojeStr = getDataLocal(); // Data de hoje para comparação de atraso
+    const currentTimeStr = new Date().toTimeString().slice(0, 5); // Hora atual local
 
     data.forEach(item => {
         // REVISÃO (Inclui Conclusões e Cancelamentos)
@@ -70,10 +80,12 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                 horaLimiteShow = ppDate.toTimeString().slice(0,5);
             } 
             else {
-                const itemData = item.scheduled_date; 
+                const itemData = item.scheduled_date; // YYYY-MM-DD
+                
                 if (itemData < hojeStr) {
-                    isAtrasada = true; 
+                    isAtrasada = true; // Tarefa de ontem ou antes
                 } else if (itemData === hojeStr) {
+                    // Tarefa de hoje: checa hora
                     const limit = item.template.due_time || "23:59";
                     if (currentTimeStr > limit) isAtrasada = true;
                     horaLimiteShow = limit;
@@ -92,7 +104,6 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
 
   // --- APROVAÇÃO INTELIGENTE (Conclusão ou Cancelamento) ---
   async function confirmarAprovacao(tarefa) {
-    // Se tiver motivo de cancelamento, o destino é CANCELED. Se não, é COMPLETED.
     const novoStatus = tarefa.cancellation_reason ? 'CANCELED' : 'COMPLETED';
 
     const { error } = await supabase.from('checklist_items').update({ 
@@ -143,7 +154,6 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                 </div>
             ) : (
                 tarefasRevisao.map(t => {
-                    // Detecta se é um pedido de Cancelamento
                     const isCancellationRequest = !!t.cancellation_reason;
 
                     return (
@@ -154,7 +164,6 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                                 <div className="flex-1 min-w-0">
                                     <h4 className="font-bold text-sm text-slate-800 truncate">{t.template?.title}</h4>
                                     
-                                    {/* ETIQUETA ESPECIAL DE CANCELAMENTO */}
                                     {isCancellationRequest && (
                                         <div className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded-full font-black uppercase border border-red-200 my-1">
                                             <XCircle size={12}/> Solicitação de Cancelamento
@@ -166,7 +175,6 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                                         <span className="text-xs font-bold text-blue-700 bg-blue-50 px-1.5 rounded">{t.employee?.full_name}</span>
                                     </div>
 
-                                    {/* Exibe Justificativa se houver */}
                                     {t.cancellation_reason && (
                                         <div className="mt-2 bg-red-50 border border-red-100 p-2 rounded text-xs text-red-800 italic">
                                             "{t.cancellation_reason}"
@@ -181,8 +189,6 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
                             </div>
                             <div className="pl-3 flex gap-2 mt-1">
                                 <button onClick={() => {setTarefaParaDevolver(t); setFeedbackGestor(""); setModalDevolverOpen(true)}} className="flex-1 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 active:scale-95">Devolver</button>
-                                
-                                {/* Botão adapta o texto dependendo da ação */}
                                 <button onClick={() => confirmarAprovacao(t)} className={`flex-1 py-2 rounded-lg text-xs font-bold text-white shadow-sm active:scale-95 ${isCancellationRequest ? 'bg-red-500 hover:bg-red-600' : 'bg-green-600 hover:bg-green-700'}`}>
                                     {isCancellationRequest ? 'Aprovar Cancelamento' : 'Aprovar Conclusão'}
                                 </button>
@@ -193,7 +199,6 @@ export default function ManagerArea({ usuarioAtual, lojaAtual, onBack }) {
             )
         )}
 
-        {/* ... (ABA ATRASADAS MANTIDA IGUAL AO CÓDIGO ANTERIOR) ... */}
         {!loading && abaAtiva === 'atrasadas' && (
             tarefasAtrasadas.length === 0 ? (
                 <div className="text-center py-12 flex flex-col items-center gap-2 opacity-40">
