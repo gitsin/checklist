@@ -34,8 +34,7 @@ export default function App() {
   const [uploading, setUploading] = useState(false);
 
   const mapaDiasSemana = {
-    1: "Todas as segundas-feiras", 2: "Todas as terças-feiras", 3: "Todas as quartas-feiras",
-    4: "Todas as quintas-feiras", 5: "Todas as sextas-feiras", 6: "Todos os sábados", 7: "Todos os domingos"
+    1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb", 7: "Dom"
   };
 
   useEffect(() => {
@@ -45,13 +44,18 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  function getDataLocal() {
+    return new Date().toLocaleDateString('en-CA');
+  }
+
   async function buscarLojas() {
     const { data } = await supabase.from("stores").select("*").eq("active", true).order('name');
     setLojas(data || []);
   }
 
   async function atualizarContadoresGerais() {
-    const { data } = await supabase.rpc('get_store_pending_counts');
+    // CORREÇÃO: Passa a data local para a função SQL
+    const { data } = await supabase.rpc('get_store_pending_counts', { filter_date: getDataLocal() });
     if (data) {
       const mapa = {};
       data.forEach(item => { mapa[item.store_id] = item.total });
@@ -63,7 +67,13 @@ export default function App() {
     setLoading(true); setLojaAtual(loja);
     const { data } = await supabase.from("employee").select("*").eq("store_id", loja.id).eq("active", true);
     setFuncionarios(data || []);
-    const { data: counts } = await supabase.rpc('get_role_pending_counts', { target_store_id: loja.id });
+    
+    // CORREÇÃO: Passa a data local para a função SQL
+    const { data: counts } = await supabase.rpc('get_role_pending_counts', { 
+        target_store_id: loja.id,
+        filter_date: getDataLocal()
+    });
+    
     if (counts) { const mapa = {}; counts.forEach(item => { mapa[item.role_id] = item.total }); setContagemCargos(mapa); }
     setLoading(false);
   }
@@ -89,7 +99,7 @@ export default function App() {
 
   async function buscarTarefasDoDia(storeId, roleId) {
     setLoading(true);
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = getDataLocal();
     const { data } = await supabase.from("checklist_items")
       .select(`*, template:task_templates!inner ( title, description, requires_photo_evidence, frequency_type, specific_day_of_week, specific_day_of_month, due_time )`)
       .eq("store_id", storeId)
@@ -121,7 +131,7 @@ export default function App() {
         return now > new Date(tarefa.postponed_to);
     }
 
-    const hojeStr = now.toLocaleDateString('en-CA');
+    const hojeStr = getDataLocal();
     const tarefaData = tarefa.scheduled_date;
 
     if (tarefaData < hojeStr) return true; 
@@ -163,7 +173,6 @@ export default function App() {
   }
 
   async function executarConclusao(tarefa, fotoUrl) {
-    // Se tem gestor, vai para WAITING_APPROVAL. Se é Diretor (sem gestor), vai direto para COMPLETED.
     let novoStatus = (tarefa.status === 'PENDING' || tarefa.status === 'RETURNED' || tarefa.status === 'POSTPONED') 
       ? (usuarioAtual.manager_id ? 'WAITING_APPROVAL' : 'COMPLETED') 
       : 'PENDING';
@@ -190,7 +199,7 @@ export default function App() {
   function formatarDataAdiada(isoString) {
     if (!isoString) return "";
     const data = new Date(isoString);
-    return `${data.getDate().toString().padStart(2,'0')}/${(data.getMonth()+1).toString().padStart(2,'0')} às ${data.getHours().toString().padStart(2,'0')}:${data.getMinutes().toString().padStart(2,'0')}`;
+    return `${data.getDate().toString().padStart(2,'0')}/${(data.getMonth()+1).toString().padStart(2,'0')} ${data.getHours().toString().padStart(2,'0')}:${data.getMinutes().toString().padStart(2,'0')}`;
   }
 
   function abrirModalAdiar(tarefa) {
@@ -209,16 +218,12 @@ export default function App() {
 
   async function confirmarCancelamento() {
     if (!justificativa) return;
-    
-    // AGORA O CANCELAMENTO TAMBÉM VAI PARA REVISÃO SE TIVER GESTOR
     const novoStatus = usuarioAtual.manager_id ? 'WAITING_APPROVAL' : 'CANCELED';
-
     await supabase.from("checklist_items").update({ 
         status: novoStatus, 
         cancellation_reason: justificativa,
-        completed_by_employee_id: usuarioAtual.id // Registra quem solicitou
+        completed_by_employee_id: usuarioAtual.id
     }).eq("id", tarefaParaAcao.id);
-    
     setModalCancelarOpen(false); 
     buscarTarefasDoDia(lojaAtual.id, usuarioAtual.role_id);
   }
@@ -227,36 +232,38 @@ export default function App() {
   if (view === 'manager') return <ManagerArea usuarioAtual={usuarioAtual} lojaAtual={lojaAtual} onBack={() => setView('kiosk')} />;
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col items-center py-8 px-4 font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-100 flex flex-col items-center py-6 px-3 font-sans text-slate-800">
       
       {!lojaAtual && (
-        <div className="w-full max-w-5xl animate-fade-in">
-            <button onClick={entrarNoAdmin} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-3"><Settings size={28}/></button>
-            <h1 className="text-3xl font-bold text-center mb-8">Selecione a Unidade</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{lojas.map(l => (
-                <button key={l.id} onClick={() => selecionarLoja(l)} className="relative bg-white p-8 rounded-2xl shadow-lg hover:scale-[1.02] transition-all flex flex-col items-center gap-4 group active:scale-95">
-                    {contagemLojas[l.id] > 0 && <div className="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md border-4 border-slate-100 text-lg animate-bounce">{contagemLojas[l.id]}</div>}
-                    <div className="p-4 bg-blue-50 rounded-full group-hover:bg-blue-100"><Store size={48} className="text-blue-600" /></div>
-                    <span className="text-2xl font-bold text-slate-700">{l.name}</span>
+        <div className="w-full max-w-5xl animate-fade-in pt-4">
+            <button onClick={entrarNoAdmin} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-3"><Settings size={24}/></button>
+            <h1 className="text-2xl font-bold text-center mb-6 text-slate-700">Selecione a Unidade</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{lojas.map(l => (
+                <button key={l.id} onClick={() => selecionarLoja(l)} className="relative bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:scale-[1.02] transition-all flex flex-col items-center gap-3 active:scale-95">
+                    {contagemLojas[l.id] > 0 && <div className="absolute -top-2 -right-2 bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md border-2 border-white text-sm animate-bounce">{contagemLojas[l.id]}</div>}
+                    <div className="p-3 bg-blue-50 rounded-full"><Store size={32} className="text-blue-600" /></div>
+                    <span className="text-lg font-bold text-slate-700">{l.name}</span>
                 </button>
             ))}</div>
         </div>
       )}
 
       {lojaAtual && !usuarioAtual && (
-        <div className="w-full max-w-6xl animate-fade-in">
-            <button onClick={voltarParaLojas} className="mb-6 flex gap-2 text-slate-500 font-bold hover:text-blue-600 p-2"><ArrowLeft /> Trocar de Unidade</button>
-            <h2 className="text-3xl font-bold text-center mb-10">Quem é você?</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">{funcionarios.filter(f => f.active).map(f => {
+        <div className="w-full max-w-6xl animate-fade-in pt-4">
+            <button onClick={voltarParaLojas} className="mb-4 flex gap-2 text-slate-500 font-bold hover:text-blue-600 items-center text-sm"><ArrowLeft size={18}/> Trocar de Unidade</button>
+            <h2 className="text-2xl font-bold text-center mb-6 text-slate-700">Quem é você?</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{funcionarios.filter(f => f.active).map(f => {
                 const qtd = contagemCargos[f.role_id] || 0;
                 return (
-                    <button key={f.id} onClick={() => selecionarUsuario(f)} className="relative bg-white p-6 rounded-3xl shadow-md flex flex-col items-center gap-4 hover:shadow-xl hover:-translate-y-2 transition-all group border border-slate-100 active:scale-95">
-                        {qtd > 0 && <div className="absolute -top-3 -right-3 bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-md border-4 border-slate-100 text-lg z-10">{qtd}</div>}
-                        <div className="w-24 h-24 bg-slate-200 rounded-full flex items-center justify-center group-hover:bg-blue-50 transition-colors">
-                            {f.avatar_url ? <img src={f.avatar_url} className="w-full h-full rounded-full object-cover"/> : <User size={40} className="text-slate-400 group-hover:text-blue-400"/>}
+                    <button key={f.id} onClick={() => selecionarUsuario(f)} className="relative bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center gap-3 active:scale-95">
+                        {qtd > 0 && <div className="absolute -top-2 -right-2 bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md border-2 border-white text-sm z-10">{qtd}</div>}
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden">
+                            {f.avatar_url ? <img src={f.avatar_url} className="w-full h-full object-cover"/> : <User size={28} className="text-slate-400"/>}
                         </div>
-                        <span className="font-bold text-lg text-center leading-tight text-slate-700">{f.full_name}</span>
-                        <span className="text-xs font-bold text-slate-400 uppercase">{f.roles?.name}</span>
+                        <div className="text-center">
+                            <span className="font-bold text-sm block text-slate-700 leading-tight">{f.full_name}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase mt-1 block">{f.roles?.name}</span>
+                        </div>
                     </button>
                 )
             })}</div>
@@ -264,92 +271,85 @@ export default function App() {
       )}
 
       {usuarioAtual && (
-        <div className="w-full max-w-5xl animate-fade-in">
-            <div className="bg-blue-600 text-white p-6 rounded-t-3xl shadow-lg flex justify-between items-center sticky top-0 z-20">
-                <div className="flex gap-4 items-center">
-                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center font-bold text-xl">{usuarioAtual.full_name[0]}</div>
-                    <div><h2 className="text-xl font-bold">{usuarioAtual.full_name}</h2><p className="text-sm text-blue-200">{lojaAtual.name}</p></div>
+        <div className="w-full max-w-lg animate-fade-in pb-24">
+            <div className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg flex justify-between items-center mb-4 sticky top-2 z-20">
+                <div className="flex gap-3 items-center overflow-hidden">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-lg">{usuarioAtual.full_name[0]}</div>
+                    <div className="min-w-0">
+                        <h2 className="text-base font-bold truncate">{usuarioAtual.full_name}</h2>
+                        <p className="text-xs text-blue-100 truncate">{lojaAtual.name}</p>
+                    </div>
                 </div>
-                <div className="flex gap-2">
-                    {isGestor && <button onClick={() => setView('manager')} className="bg-amber-400 text-amber-900 px-4 py-2 rounded-lg font-bold flex gap-2 items-center hover:bg-amber-300 active:scale-95"><ClipboardCheck size={18}/> Equipe</button>}
-                    <button onClick={voltarParaFuncionarios} className="bg-white/10 px-4 py-2 rounded-lg text-sm hover:bg-white/20 active:scale-95">Sair</button>
+                <div className="flex gap-2 flex-shrink-0">
+                    {isGestor && <button onClick={() => setView('manager')} className="bg-amber-400 text-amber-900 p-2 rounded-lg font-bold hover:bg-amber-300 active:scale-95"><ClipboardCheck size={20}/></button>}
+                    <button onClick={voltarParaFuncionarios} className="bg-white/10 px-3 py-2 rounded-lg text-xs font-bold hover:bg-white/20 active:scale-95">Sair</button>
                 </div>
             </div>
             
-            <div className="bg-white p-4 rounded-b-3xl shadow-lg min-h-[500px]">
-                {loading ? <div className="text-center py-20 text-slate-400">Carregando...</div> : tarefas.length === 0 ? 
-                    <div className="text-center py-20 bg-slate-50 rounded-xl border border-dashed border-slate-200 m-4"><CheckCircle className="mx-auto text-slate-300 mb-2" size={48} /><p className="text-slate-500 font-medium text-lg">Tudo limpo por hoje!</p></div> : 
-                    (<div className="space-y-4">
+            <div className="space-y-3">
+                {loading ? <div className="text-center py-10 text-slate-400">Carregando...</div> : tarefas.length === 0 ? 
+                    <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-200"><CheckCircle className="mx-auto text-slate-300 mb-2" size={40} /><p className="text-slate-500 font-medium text-sm">Tudo limpo por hoje!</p></div> : 
+                    (<>
                         {tarefas.map(t => {
                             const isCompleted = t.status === 'COMPLETED';
                             const isWaiting = t.status === 'WAITING_APPROVAL';
                             const isReturned = t.status === 'RETURNED';
                             const isCanceled = t.status === 'CANCELED';
                             const isPostponed = t.status === 'POSTPONED';
-                            
                             const isOverdue = verificarAtraso(t);
 
                             let cardClass = "border-slate-100 bg-white";
-                            if (isCompleted) cardClass = "border-green-200 bg-green-50 opacity-75";
-                            if (isCanceled) cardClass = "border-slate-200 bg-slate-100 opacity-60"; // Estilo para Cancelada
+                            if (isCompleted) cardClass = "border-green-200 bg-green-50/50 opacity-75";
+                            if (isCanceled) cardClass = "border-slate-200 bg-slate-100 opacity-60"; 
                             if (isWaiting) cardClass = "border-blue-200 bg-blue-50 opacity-90";
                             if (isReturned) cardClass = "border-orange-300 bg-orange-50 shadow-md";
                             if (isPostponed) cardClass = "border-purple-200 bg-purple-50 shadow-sm";
-                            if (isOverdue) cardClass = "border-red-300 bg-red-50 shadow-md";
+                            if (isOverdue) cardClass = "border-red-300 bg-red-50 shadow-md ring-1 ring-red-100";
 
                             return (
-                                <div key={t.id} className={`p-4 rounded-xl border-2 transition-all ${cardClass}`}>
-                                    <div className="mb-3">
-                                        <div className="flex justify-between items-start">
-                                            <h4 className={`font-bold text-lg flex items-center gap-2 ${isCompleted || isCanceled ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                                                {isReturned && <AlertTriangle className="text-orange-600" size={20} />}
-                                                {isPostponed && <CalendarClock className="text-purple-600" size={20} />}
-                                                {isOverdue && <AlertCircle className="text-red-600 animate-pulse" size={20} />}
-                                                {t.template.requires_photo_evidence && !isCompleted && !isCanceled && <Camera size={20} className="text-purple-600" />}
-                                                {t.template.title}
-                                            </h4>
-                                            <div className="flex gap-1 flex-col items-end">
-                                                {/* NOVAS ETIQUETAS APROVADAS */}
-                                                {isCompleted && <span className="bg-green-100 text-green-800 text-[10px] px-2 py-1 rounded-full uppercase font-black flex items-center gap-1 border border-green-200"><CheckCircle size={10}/> Concluída e Aprovada</span>}
-                                                {isCanceled && <span className="bg-slate-200 text-slate-600 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-slate-300">Cancelada e Aprovada</span>}
-                                                
-                                                {isWaiting && <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-1 rounded-full uppercase font-black">Em Revisão</span>}
-                                                {isReturned && <span className="bg-orange-100 text-orange-800 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-orange-200">Devolvida</span>}
-                                                {isPostponed && <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-purple-200">Adiada</span>}
-                                                {isOverdue && <span className="bg-red-100 text-red-800 text-[10px] px-2 py-1 rounded-full uppercase font-black border border-red-200 flex items-center gap-1"><AlertCircle size={10}/> Atrasada</span>}
-                                            </div>
+                                <div key={t.id} className={`p-3 rounded-2xl border-2 transition-all ${cardClass}`}>
+                                    <div className="flex justify-between items-start mb-1">
+                                        <h4 className={`font-bold text-base flex-1 mr-2 leading-tight flex items-center gap-2 ${isCompleted || isCanceled ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                            {isReturned && <AlertTriangle className="text-orange-600 flex-shrink-0" size={18} />}
+                                            {isPostponed && <CalendarClock className="text-purple-600 flex-shrink-0" size={18} />}
+                                            {isOverdue && <AlertCircle className="text-red-600 animate-pulse flex-shrink-0" size={18} />}
+                                            {t.template.requires_photo_evidence && !isCompleted && !isCanceled && <Camera size={18} className="text-purple-600 flex-shrink-0" />}
+                                            {t.template.title}
+                                        </h4>
+                                        <div className="flex flex-col items-end gap-1">
+                                            {isCompleted && <span className="bg-green-100 text-green-800 text-[9px] px-2 py-0.5 rounded font-black border border-green-200 whitespace-nowrap">APROVADA</span>}
+                                            {isCanceled && <span className="bg-slate-200 text-slate-600 text-[9px] px-2 py-0.5 rounded font-black border border-slate-300 whitespace-nowrap">CANCELADA</span>}
+                                            {isWaiting && <span className="bg-blue-100 text-blue-800 text-[9px] px-2 py-0.5 rounded font-black whitespace-nowrap">EM REVISÃO</span>}
+                                            {isReturned && <span className="bg-orange-100 text-orange-800 text-[9px] px-2 py-0.5 rounded font-black border border-orange-200 whitespace-nowrap">DEVOLVIDA</span>}
+                                            {isPostponed && <span className="bg-purple-100 text-purple-800 text-[9px] px-2 py-0.5 rounded font-black border border-purple-200 whitespace-nowrap">ADIADA</span>}
+                                            {isOverdue && <span className="bg-red-100 text-red-800 text-[9px] px-2 py-0.5 rounded font-black border border-red-200 flex items-center gap-1 whitespace-nowrap"><AlertCircle size={8}/> ATRASADA</span>}
                                         </div>
-                                        <div className="flex flex-wrap gap-2 mt-1 mb-1">
-                                            {isPostponed ? (
-                                                <span className="bg-purple-100 text-purple-800 text-[11px] px-2 py-1 rounded border border-purple-300 font-bold uppercase flex items-center gap-1"><Clock size={12}/> Adiado para: {formatarDataAdiada(t.postponed_to)}</span>
-                                            ) : (
-                                                <>
-                                                    {t.template.frequency_type === 'daily' && <span className={`text-[10px] px-2 py-0.5 rounded border font-bold uppercase ${isOverdue ? 'bg-red-100 text-red-800 border-red-300' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>Todos os dias {t.template.due_time ? `até ${t.template.due_time.slice(0,5)}` : ''}</span>}
-                                                    {t.template.frequency_type === 'weekly' && <span className="bg-orange-50 text-orange-700 text-[10px] px-2 py-0.5 rounded border border-orange-200 font-bold uppercase">{mapaDiasSemana[t.template.specific_day_of_week]}</span>}
-                                                    {t.template.frequency_type === 'monthly' && <span className="bg-pink-50 text-pink-700 text-[10px] px-2 py-0.5 rounded border border-pink-200 font-bold uppercase">Todo dia {t.template.specific_day_of_month}</span>}
-                                                </>
-                                            )}
-                                        </div>
-                                        <p className="text-sm text-slate-500 mt-1">{t.template.description}</p>
-                                        {isReturned && t.manager_notes && (<div className="mt-3 p-3 bg-orange-100 border border-orange-200 rounded-lg text-sm text-orange-900 italic flex gap-2"><MessageSquare size={16}/><span><strong>Feedback:</strong> {t.manager_notes}</span></div>)}
                                     </div>
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {isPostponed ? (
+                                            <span className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded border border-purple-200 font-bold flex items-center gap-1"><Clock size={10}/> {formatarDataAdiada(t.postponed_to)}</span>
+                                        ) : (
+                                            <>
+                                                {t.template.frequency_type === 'daily' && <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase ${isOverdue ? 'bg-red-100 text-red-800 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>Diária • {t.template.due_time ? `Até ${t.template.due_time.slice(0,5)}` : 'Dia todo'}</span>}
+                                                {t.template.frequency_type === 'weekly' && <span className="bg-orange-50 text-orange-700 text-[10px] px-1.5 py-0.5 rounded border border-orange-100 font-bold uppercase">{mapaDiasSemana[t.template.specific_day_of_week]}</span>}
+                                                {t.template.frequency_type === 'monthly' && <span className="bg-pink-50 text-pink-700 text-[10px] px-1.5 py-0.5 rounded border border-pink-100 font-bold uppercase">Dia {t.template.specific_day_of_month}</span>}
+                                            </>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3 leading-relaxed">{t.template.description}</p>
+                                    {isReturned && t.manager_notes && (<div className="mb-3 p-2 bg-orange-50 border border-orange-100 rounded text-xs text-orange-900 italic flex gap-2"><MessageSquare size={14}/><span>{t.manager_notes}</span></div>)}
                                     {!isCompleted && !isWaiting && !isCanceled && (
-                                        <div className="flex flex-col gap-3 mt-4">
-                                            <button onClick={() => handleConcluirClick(t)} className={`w-full py-4 rounded-xl font-bold flex justify-center items-center gap-2 text-lg transition-all active:scale-95 shadow-sm ${isReturned ? 'bg-orange-500 text-white shadow-orange-200' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-                                                {t.template.requires_photo_evidence ? <Camera size={20}/> : (isReturned ? <RefreshCcw size={20}/> : <CheckCircle size={20}/>)} 
-                                                {isReturned ? 'Reenviar' : t.template.requires_photo_evidence ? 'Tirar Foto e Concluir' : 'Concluir Tarefa'}
-                                            </button>
-                                            <div className="flex gap-3">
-                                                <button onClick={() => abrirModalAdiar(t)} className="flex-1 bg-slate-100 py-3 rounded-xl text-slate-600 font-semibold hover:bg-amber-100 hover:text-amber-700 flex items-center justify-center gap-2 active:scale-95"><Clock size={18}/> {isPostponed ? 'Reagendar' : 'Fazer depois'}</button>
-                                                <button onClick={() => {setTarefaParaAcao(t); setModalCancelarOpen(true)}} className="flex-1 bg-slate-100 py-3 rounded-xl text-slate-600 font-semibold hover:bg-red-100 hover:text-red-700 flex items-center justify-center gap-2 active:scale-95"><XCircle size={18}/> Cancelar Tarefa</button>
-                                            </div>
+                                        <div className="flex gap-2 mt-2">
+                                            <button onClick={() => {setTarefaParaAcao(t); setModalCancelarOpen(true)}} className="p-3 rounded-xl bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 active:scale-95 transition-colors border border-slate-200" title="Cancelar"><XCircle size={20}/></button>
+                                            <button onClick={() => abrirModalAdiar(t)} className="p-3 rounded-xl bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600 active:scale-95 transition-colors border border-slate-200" title="Adiar"><Clock size={20}/></button>
+                                            <button onClick={() => handleConcluirClick(t)} className={`flex-1 py-3 px-4 rounded-xl font-bold flex justify-center items-center gap-2 text-sm text-white shadow-sm active:scale-95 transition-all ${isReturned ? 'bg-orange-500' : 'bg-slate-800'}`}>{t.template.requires_photo_evidence ? <Camera size={18}/> : (isReturned ? <RefreshCcw size={18}/> : <CheckCircle size={18}/>)} {isReturned ? 'Reenviar' : 'Concluir'}</button>
                                         </div>
                                     )}
-                                    {isWaiting && <div className="text-xs text-blue-600 font-bold italic flex gap-1 items-center mt-2 bg-blue-50 p-2 rounded-lg justify-center"><Clock size={14}/> Aguardando aprovação do seu gestor...</div>}
+                                    {isWaiting && <div className="text-xs text-blue-600 font-bold italic text-center mt-2 bg-blue-50 p-1.5 rounded">Aguardando aprovação...</div>}
                                 </div>
                             )
                         })}
-                    </div>)
+                    </>)
                 }
             </div>
         </div>
@@ -358,9 +358,9 @@ export default function App() {
       {modalAdiarOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4">
-                <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl relative">
-                    <h3 className="font-bold text-xl mb-4 text-slate-800">Adiar para quando?</h3>
-                    <input type="datetime-local" className="w-full border-2 p-3 rounded-xl mb-6 text-lg outline-none focus:border-amber-500" value={novaDataPrazo} onChange={e => setNovaDataPrazo(e.target.value)} />
+                <div className="bg-white p-5 rounded-2xl w-full max-w-sm shadow-2xl relative">
+                    <h3 className="font-bold text-lg mb-4 text-slate-800">Adiar para quando?</h3>
+                    <input type="datetime-local" className="w-full border-2 p-3 rounded-xl mb-6 text-base outline-none focus:border-amber-500" value={novaDataPrazo} onChange={e => setNovaDataPrazo(e.target.value)} />
                     <div className="flex gap-3">
                         <button onClick={() => setModalAdiarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl active:scale-95">Cancelar</button>
                         <button onClick={confirmarAdiamento} className="flex-1 bg-amber-500 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95">Confirmar</button>
@@ -373,9 +373,10 @@ export default function App() {
       {modalCancelarOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4">
-                <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl relative">
-                    <h3 className="font-bold text-xl mb-4 text-red-600">Cancelar Tarefa</h3>
-                    <textarea className="w-full border-2 p-3 rounded-xl mb-6 min-h-[100px] outline-none focus:border-red-500" placeholder="Motivo..." onChange={e => setJustificativa(e.target.value)} />
+                <div className="bg-white p-5 rounded-2xl w-full max-w-sm shadow-2xl relative">
+                    <h3 className="font-bold text-lg mb-4 text-red-600">Cancelar Tarefa</h3>
+                    <p className="text-xs text-slate-500 mb-2">Informe o motivo para seu gestor:</p>
+                    <textarea className="w-full border-2 p-3 rounded-xl mb-6 min-h-[100px] text-sm outline-none focus:border-red-500" placeholder="Motivo..." onChange={e => setJustificativa(e.target.value)} />
                     <div className="flex gap-3">
                         <button onClick={() => setModalCancelarOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl active:scale-95">Voltar</button>
                         <button onClick={confirmarCancelamento} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95">Confirmar</button>
@@ -388,18 +389,18 @@ export default function App() {
       {modalFotoOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 overflow-y-auto backdrop-blur-sm">
             <div className="flex min-h-full items-center justify-center p-4">
-                <div className="bg-white p-6 rounded-3xl w-full max-w-md shadow-2xl relative">
-                    <h3 className="font-bold text-xl mb-2 text-slate-800 flex items-center gap-2"><Camera className="text-purple-600"/> Evidência Fotográfica</h3>
-                    <p className="text-slate-500 text-sm mb-6">Esta tarefa exige uma foto para ser concluída.</p>
-                    <div className="mb-6 w-full h-64 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden relative">
-                        {previewUrl ? <img src={previewUrl} className="w-full h-full object-cover" /> : <div className="text-center text-slate-400"><Camera size={48} className="mx-auto mb-2 opacity-30"/><p className="text-xs">Nenhuma foto capturada</p></div>}
+                <div className="bg-white p-5 rounded-3xl w-full max-w-md shadow-2xl relative">
+                    <h3 className="font-bold text-lg mb-2 text-slate-800 flex items-center gap-2"><Camera className="text-purple-600"/> Evidência</h3>
+                    <p className="text-slate-500 text-sm mb-4">Tire uma foto para comprovar.</p>
+                    <div className="mb-4 w-full h-64 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden relative">
+                        {previewUrl ? <img src={previewUrl} className="w-full h-full object-cover" /> : <div className="text-center text-slate-400"><Camera size={40} className="mx-auto mb-2 opacity-30"/><p className="text-xs">Toque para fotografar</p></div>}
                         <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer"/>
                     </div>
                     <div className="flex flex-col gap-3">
-                        <button className="w-full py-3 bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center justify-center gap-2 pointer-events-none"><Camera size={20}/> {previewUrl ? "Tirar Outra Foto" : "Tirar Foto"}</button>
-                        <div className="flex gap-3 mt-2">
+                        <button className="w-full py-3 bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center justify-center gap-2 pointer-events-none"><Camera size={20}/> {previewUrl ? "Tirar Outra" : "Tirar Foto"}</button>
+                        <div className="flex gap-3 mt-1">
                             <button onClick={() => setModalFotoOpen(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl active:scale-95" disabled={uploading}>Cancelar</button>
-                            <button onClick={confirmarFotoEConcluir} disabled={!previewUrl || uploading} className={`flex-1 py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg active:scale-95 ${!previewUrl || uploading ? 'bg-slate-300' : 'bg-purple-600 hover:bg-purple-700'}`}>{uploading ? "Enviando..." : <><UploadCloud size={20}/> Enviar e Concluir</>}</button>
+                            <button onClick={confirmarFotoEConcluir} disabled={!previewUrl || uploading} className={`flex-1 py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg active:scale-95 ${!previewUrl || uploading ? 'bg-slate-300' : 'bg-purple-600 hover:bg-purple-700'}`}>{uploading ? "Enviando..." : <><UploadCloud size={20}/> Enviar</>}</button>
                         </div>
                     </div>
                 </div>
