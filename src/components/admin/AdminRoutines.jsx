@@ -108,52 +108,54 @@ export default function AdminRoutines({ goBack, lojas }) {
     }
 
     return (
-        <div className="animate-fade-in">
-            <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
-                <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-white min-h-[44px]"><ArrowLeft /> Voltar</button>
-                <button onClick={() => { setNovaRotina({ store_id: "", title: "", description: "", start_time: "", deadline_time: "", icon: "sun", notify_whatsapp: false }); setItensSelecionados([]); setModalNovaRotinaOpen(true); }} className="bg-amber-600 px-4 py-2 rounded font-bold hover:bg-amber-500 flex gap-2 items-center min-h-[44px] justify-center"><Plus size={18} /> Nova Rotina</button>
-            </div>
+        <>
+            <div className="animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
+                    <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-white min-h-[44px]"><ArrowLeft /> Voltar</button>
+                    <button onClick={() => { setNovaRotina({ store_id: "", title: "", description: "", start_time: "", deadline_time: "", icon: "sun", notify_whatsapp: false }); setItensSelecionados([]); setModalNovaRotinaOpen(true); }} className="bg-amber-600 px-4 py-2 rounded font-bold hover:bg-amber-500 flex gap-2 items-center min-h-[44px] justify-center"><Plus size={18} /> Nova Rotina</button>
+                </div>
 
-            <div className="bg-slate-700 p-4 rounded border border-slate-600 mb-6">
-                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Filtrar por Loja</label>
-                <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLojaRotina} onChange={e => setFiltroLojaRotina(e.target.value)}>
-                    <option value="">Selecione a Loja...</option>
-                    {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-            </div>
+                <div className="bg-slate-700 p-4 rounded border border-slate-600 mb-6">
+                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Filtrar por Loja</label>
+                    <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLojaRotina} onChange={e => setFiltroLojaRotina(e.target.value)}>
+                        <option value="">Selecione a Loja...</option>
+                        {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {listaRotinas.map(rotina => (
-                    <div key={rotina.id} className={`p-4 rounded border-t-4 shadow-lg flex flex-col justify-between h-full ${rotina.active ? 'bg-white border-amber-500' : 'bg-slate-300 border-slate-500'}`}>
-                        <div>
-                            <div className="flex justify-between items-start mb-2">
-                                <div className={`p-2 rounded-full ${rotina.active ? 'bg-amber-100 text-amber-700' : 'bg-slate-400 text-slate-600'}`}><Layers size={24} /></div>
-                                <button onClick={() => toggleStatusRotina(rotina)}>{rotina.active ? <ToggleRight className="text-green-600" size={28} /> : <ToggleLeft size={28} />}</button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {listaRotinas.map(rotina => (
+                        <div key={rotina.id} className={`p-4 rounded border-t-4 shadow-lg flex flex-col justify-between h-full ${rotina.active ? 'bg-white border-amber-500' : 'bg-slate-300 border-slate-500'}`}>
+                            <div>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className={`p-2 rounded-full ${rotina.active ? 'bg-amber-100 text-amber-700' : 'bg-slate-400 text-slate-600'}`}><Layers size={24} /></div>
+                                    <button onClick={() => toggleStatusRotina(rotina)}>{rotina.active ? <ToggleRight className="text-green-600" size={28} /> : <ToggleLeft size={28} />}</button>
+                                </div>
+                                <h3 className={`font-bold text-lg ${rotina.active ? 'text-slate-800' : 'text-slate-500'}`}>{rotina.title}</h3>
+                                <p className="text-xs text-slate-500 mb-3 line-clamp-2">{rotina.description}</p>
+                                <div className="flex gap-2 text-xs font-mono text-slate-600 bg-slate-100 p-2 rounded mb-3">
+                                    <span className="flex items-center gap-1"><Clock size={12} /> {rotina.start_time?.slice(0, 5) || '--:--'} - {rotina.deadline_time?.slice(0, 5) || '--:--'}</span>
+                                    {rotina.notify_whatsapp && <span className="flex items-center gap-1 text-green-600 font-bold"><MessageCircle size={12} /> WhatsApp</span>}
+                                </div>
                             </div>
-                            <h3 className={`font-bold text-lg ${rotina.active ? 'text-slate-800' : 'text-slate-500'}`}>{rotina.title}</h3>
-                            <p className="text-xs text-slate-500 mb-3 line-clamp-2">{rotina.description}</p>
-                            <div className="flex gap-2 text-xs font-mono text-slate-600 bg-slate-100 p-2 rounded mb-3">
-                                <span className="flex items-center gap-1"><Clock size={12} /> {rotina.start_time?.slice(0, 5) || '--:--'} - {rotina.deadline_time?.slice(0, 5) || '--:--'}</span>
-                                {rotina.notify_whatsapp && <span className="flex items-center gap-1 text-green-600 font-bold"><MessageCircle size={12} /> WhatsApp</span>}
+
+                            {/* RODAPÉ DO CARD COM AÇÕES */}
+                            <div className="flex justify-between items-center border-t pt-3 mt-2">
+                                <span className="text-xs font-bold text-slate-400 uppercase">{rotina.routine_items?.[0]?.count || 0} Tarefas</span>
+                                <div className="flex gap-2">
+                                    {/* BOTÃO VISUALIZAR (OLHO) */}
+                                    <button onClick={() => abrirVisualizacao(rotina)} className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded transition-colors" title="Visualizar Detalhes">
+                                        <Eye size={20} />
+                                    </button>
+                                    {/* BOTÃO EDITAR (LÁPIS) */}
+                                    <button onClick={() => abrirEdicaoRotina(rotina)} className="text-slate-500 hover:text-amber-600 hover:bg-amber-50 p-2 rounded transition-colors" title="Editar Rotina">
+                                        <Pencil size={20} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
-
-                        {/* RODAPÉ DO CARD COM AÇÕES */}
-                        <div className="flex justify-between items-center border-t pt-3 mt-2">
-                            <span className="text-xs font-bold text-slate-400 uppercase">{rotina.routine_items?.[0]?.count || 0} Tarefas</span>
-                            <div className="flex gap-2">
-                                {/* BOTÃO VISUALIZAR (OLHO) */}
-                                <button onClick={() => abrirVisualizacao(rotina)} className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded transition-colors" title="Visualizar Detalhes">
-                                    <Eye size={20} />
-                                </button>
-                                {/* BOTÃO EDITAR (LÁPIS) */}
-                                <button onClick={() => abrirEdicaoRotina(rotina)} className="text-slate-500 hover:text-amber-600 hover:bg-amber-50 p-2 rounded transition-colors" title="Editar Rotina">
-                                    <Pencil size={20} />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
 
             {/* MODAL NOVA ROTINA */}
@@ -254,6 +256,6 @@ export default function AdminRoutines({ goBack, lojas }) {
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }
