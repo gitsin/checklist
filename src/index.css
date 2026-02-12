@@ -2,7 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body {
+/* ============================================
+   GLOBAL MOBILE-FIRST RESETS
+   ============================================ */
+
+html,
+body {
   height: 100%;
-  background-color: #f3f4f6; /* Cor cinza clarinho de fundo */
+  background-color: #1e293b;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  touch-action: manipulation;
+  /* Prevents 300ms delay & double-tap zoom */
+  overscroll-behavior: none;
+  /* Prevents pull-to-refresh on Android */
+}
+
+/* Prevent iOS zoom on input focus (requires font-size >= 16px) */
+input,
+select,
+textarea {
+  font-size: 16px !important;
+  touch-action: manipulation;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area utilities for notched devices */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Better focus outlines for touch */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Hide scrollbar but allow scrolling */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
