@@ -53,7 +53,14 @@ export default function App() {
     navigate('/kiosk');
   }
 
+  // Sair do kiosk -> volta para seleção de funcionário (mantém loja)
   const handleLogout = () => {
+    setCurrentUserData(null);
+    navigate('/');
+  };
+
+  // Sair totalmente -> volta para seleção de loja
+  const handleFullLogout = () => {
     setCurrentUserData(null);
     setSelectedStore(null);
     setUsers([]);
@@ -108,9 +115,7 @@ const STORE_COLORS = [
 
 function getInitials(name) {
   if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0][0].toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.trim()[0].toUpperCase();
 }
 
 const AVATAR_COLORS = [
@@ -139,18 +144,18 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 font-sans">
+    <div className="min-h-screen bg-slate-100 font-sans">
 
       {/* ---- BARRA TOPO ---- */}
-      <div className="bg-slate-900/80 backdrop-blur-sm border-b border-slate-700/50 px-4 py-2 sticky top-0 z-50">
+      <div className="bg-white/90 backdrop-blur-sm border-b border-slate-200 px-4 py-2 sticky top-0 z-50 shadow-sm">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Info size={14} className="text-blue-400" />
-            <span className="text-xs text-slate-400"><strong className="text-blue-400">Beta</strong> — Relate erros ao gerente</span>
+            <Info size={14} className="text-blue-500" />
+            <span className="text-xs text-slate-500"><strong className="text-blue-600">Beta</strong> — Relate erros ao gerente</span>
           </div>
           <button
             onClick={() => navigate('/manual')}
-            className="flex items-center gap-1 text-slate-400 hover:text-white text-xs font-medium px-2 py-1 rounded hover:bg-slate-700 transition-colors"
+            className="flex items-center gap-1 text-slate-500 hover:text-blue-600 text-xs font-medium px-2 py-1 rounded hover:bg-slate-200 transition-colors"
           >
             <BookOpen size={12} /> Manual
           </button>
@@ -162,15 +167,15 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
 
         {/* LOGO */}
         <div className="text-center mb-6 sm:mb-10 animate-fade-in">
-          <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tight mb-1">Niilu</h1>
-          <p className="text-slate-500 text-xs sm:text-sm font-medium tracking-widest uppercase">Gestão de Rotinas</p>
+          <h1 className="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight mb-1">Niilu</h1>
+          <p className="text-slate-400 text-xs sm:text-sm font-medium tracking-widest uppercase">Gestão de Rotinas</p>
         </div>
 
         {/* ====== ETAPA 1: SELEÇÃO DE LOJA ====== */}
         {!selectedStore && (
           <div className="animate-fade-in flex-1">
-            <h2 className="text-xl font-bold text-slate-300 mb-6 flex items-center gap-2">
-              <Store size={22} className="text-blue-400" /> Selecione sua Loja
+            <h2 className="text-xl font-bold text-slate-700 mb-6 flex items-center gap-2">
+              <Store size={22} className="text-blue-500" /> Selecione sua Loja
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -210,18 +215,18 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
             {/* Breadcrumb / Voltar */}
             <button
               onClick={onBack}
-              className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 text-sm font-medium transition-colors group"
+              className="flex items-center gap-2 text-slate-400 hover:text-slate-800 mb-6 text-sm font-medium transition-colors group"
             >
               <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
               <span className="text-slate-500">›</span>
-              <span className="text-blue-400 font-bold">{selectedStore.shortName || selectedStore.name}</span>
+              <span className="text-blue-600 font-bold">{selectedStore.shortName || selectedStore.name}</span>
             </button>
 
-            <h2 className="text-2xl font-bold text-white mb-6">Quem é você?</h2>
+            <h2 className="text-2xl font-bold text-slate-800 mb-6">Quem é você?</h2>
 
             {users.length === 0 ? (
               <div className="text-center text-slate-500 py-16">
-                <User size={48} className="mx-auto mb-4 text-slate-600" />
+                <User size={48} className="mx-auto mb-4 text-slate-400" />
                 <p className="font-medium">Nenhum colaborador ativo nesta loja</p>
               </div>
             ) : (
@@ -270,7 +275,7 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
         <div className="mt-auto pt-6 sm:pt-8 text-center pb-safe">
           <button
             onClick={() => { setShowAdminModal(true); setAdminPwd(""); setPwdError(false); }}
-            className="text-slate-600 hover:text-slate-400 text-xs font-medium flex items-center gap-1.5 mx-auto px-4 py-3 rounded-lg hover:bg-slate-800 transition-colors min-h-[44px]"
+            className="text-slate-400 hover:text-slate-600 text-xs font-medium flex items-center gap-1.5 mx-auto px-4 py-3 rounded-lg hover:bg-slate-200 transition-colors min-h-[44px]"
           >
             <Lock size={12} /> Acesso Admin
           </button>
@@ -279,7 +284,7 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
 
       {/* ====== MODAL SENHA ADMIN ====== */}
       {showAdminModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-fade-in" onClick={() => setShowAdminModal(false)}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-fade-in" onClick={() => setShowAdminModal(false)}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl p-6 sm:p-8 w-full sm:max-w-xs shadow-2xl pb-safe" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
