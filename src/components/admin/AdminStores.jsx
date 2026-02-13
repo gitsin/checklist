@@ -36,12 +36,12 @@ export default function AdminStores({ goBack, lojas, onUpdate }) {
 
   return (
     <div className="animate-fade-in">
-      <button onClick={goBack} className="mb-6 flex items-center gap-2 text-slate-400 hover:text-white"><ArrowLeft /> Voltar</button>
+      <button onClick={goBack} className="mb-6 flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors"><ArrowLeft /> Voltar</button>
 
-      <div className="bg-slate-700 p-6 rounded-xl mb-8 border border-slate-600">
-        <h3 className="text-xl font-bold mb-4">Adicionar Nova Loja</h3>
+      <div className="bg-white p-6 rounded-xl mb-8 border border-slate-200 shadow-sm">
+        <h3 className="text-xl font-bold mb-4 text-slate-800">Adicionar Nova Loja</h3>
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <input type="text" placeholder="Nome da Loja" className="flex-1 p-3 rounded bg-slate-800 border border-slate-600 text-white outline-none focus:border-blue-500" value={novaLojaNome} onChange={(e) => setNovaLojaNome(e.target.value)} />
+          <input type="text" placeholder="Nome da Loja" className="flex-1 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={novaLojaNome} onChange={(e) => setNovaLojaNome(e.target.value)} />
           <button onClick={criarLoja} className="bg-blue-600 px-6 py-3 rounded hover:bg-blue-500 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto"><Plus size={20} /> Criar</button>
         </div>
       </div>

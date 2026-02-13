@@ -36,22 +36,25 @@ export default function AdminReports({ goBack, lojas }) {
 
         setLoading(true);
 
-        const { data, error } = await supabase
-            .from("checklist_items")
-            .select(`
-        *,
-        template:task_templates!inner(
-          title, description, due_time, role_id,
-          role:roles(name)
-        ),
-        worker:employee!checklist_items_completed_by_fkey(
-          full_name, role_id,
-          role:roles(name)
-        )
-      `)
+        // CORREÇÃO DE FUSO HORÁRIO:
+        // Se a busca inclui "hoje", precisamos garantir que tarefas criadas hoje mas com data "amanhã" (UTC) apareçam.
+        const hoje = getLocalDate();
+        let query = supabase.from("checklist_items").select(`*, template:task_templates!inner(title, description, due_time, role_id, role:roles(name)), worker:employee!checklist_items_completed_by_fkey(full_name, role_id, role:roles(name))`);
+
+        if (dataInicio === maisRecente(dataInicio, hoje)) {
+            // Se hoje faz parte do range, usamos created_at para garantir
+            const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
+            const dataCorte = ontem.toISOString();
+            query = query.or(`scheduled_date.gte.${dataInicio},created_at.gt.${dataCorte}`);
+        } else {
+            query = query.gte("scheduled_date", dataInicio);
+        }
+
+        const { data, error } = await query
             .eq("store_id", lojaId)
-            .gte("scheduled_date", dataInicio)
             .lte("scheduled_date", dataFim);
+
+        function maisRecente(d1, d2) { return d1 > d2 ? d1 : d2; }
 
         if (error) {
             console.error("Erro na query:", error);
@@ -163,12 +166,12 @@ export default function AdminReports({ goBack, lojas }) {
     // HELPERS DE COR
     // ========================================================
     function pctColor(pct) {
-        if (pct >= 90) return "text-green-400";
-        if (pct >= 60) return "text-amber-400";
-        return "text-red-400";
+        if (pct >= 90) return "text-emerald-600";
+        if (pct >= 60) return "text-amber-600";
+        return "text-red-600";
     }
     function pctBg(pct) {
-        if (pct >= 90) return "bg-green-500";
+        if (pct >= 90) return "bg-emerald-500";
         if (pct >= 60) return "bg-amber-500";
         return "bg-red-500";
     }
@@ -181,27 +184,27 @@ export default function AdminReports({ goBack, lojas }) {
             {/* HEADER */}
             <button
                 onClick={goBack}
-                className="flex items-center gap-2 mb-6 text-slate-400 hover:text-white transition-colors min-h-[44px]"
+                className="flex items-center gap-2 mb-6 text-slate-500 hover:text-slate-800 transition-colors min-h-[44px]"
             >
                 <ArrowLeft /> Voltar
             </button>
 
-            <h2 className="text-2xl font-black text-white mb-6 flex items-center gap-3">
-                <BarChart3 className="text-teal-400" />
+            <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
+                <BarChart3 className="text-teal-600" />
                 Dashboard de Rotinas
             </h2>
 
             {/* ============================== */}
             {/* 1. FILTROS */}
             {/* ============================== */}
-            <div className="bg-slate-700/50 backdrop-blur p-5 rounded-xl mb-6 border border-slate-600">
+            <div className="bg-white p-5 rounded-xl mb-6 border border-slate-200 shadow-sm">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                             Loja
                         </label>
                         <select
-                            className="w-full bg-slate-800 border border-slate-600 text-white p-3 rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-3 rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors"
                             value={lojaId}
                             onChange={(e) => setLojaId(e.target.value)}
                         >
@@ -214,25 +217,25 @@ export default function AdminReports({ goBack, lojas }) {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                             <Calendar size={10} className="inline mr-1" />
                             Data Início
                         </label>
                         <input
                             type="date"
-                            className="w-full bg-slate-800 border border-slate-600 text-white p-3 rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-3 rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors"
                             value={dataInicio}
                             onChange={(e) => setDataInicio(e.target.value)}
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                             <Calendar size={10} className="inline mr-1" />
                             Data Fim
                         </label>
                         <input
                             type="date"
-                            className="w-full bg-slate-800 border border-slate-600 text-white p-3 rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-3 rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors"
                             value={dataFim}
                             onChange={(e) => setDataFim(e.target.value)}
                         />
@@ -276,95 +279,108 @@ export default function AdminReports({ goBack, lojas }) {
                             icon={<BarChart3 size={20} />}
                             label="Total"
                             value={counts.TOTAL}
-                            color="bg-slate-600"
-                            border="border-slate-500"
+                            color="bg-white"
+                            border="border-slate-200"
+                            iconBg="bg-slate-100"
+                            iconColor="text-slate-600"
+                            textColor="text-slate-800"
                         />
                         <SummaryCard
                             icon={<CheckCircle size={20} />}
                             label="Concluídas"
                             value={counts.COMPLETED}
-                            color="bg-green-900/40"
-                            border="border-green-600"
-                            textColor="text-green-400"
+                            color="bg-white"
+                            border="border-emerald-200"
+                            iconBg="bg-emerald-50"
+                            iconColor="text-emerald-600"
+                            textColor="text-emerald-700"
                         />
                         <SummaryCard
                             icon={<Clock size={20} />}
                             label="Pendentes"
                             value={counts.PENDING}
-                            color="bg-red-900/30"
-                            border="border-red-600"
-                            textColor="text-red-400"
+                            color="bg-white"
+                            border="border-red-200"
+                            iconBg="bg-red-50"
+                            iconColor="text-red-500"
+                            textColor="text-red-600"
                         />
                         <SummaryCard
                             icon={<Hourglass size={20} />}
                             label="Em Revisão"
                             value={counts.WAITING_APPROVAL}
-                            color="bg-amber-900/30"
-                            border="border-amber-600"
-                            textColor="text-amber-400"
+                            color="bg-white"
+                            border="border-amber-200"
+                            iconBg="bg-amber-50"
+                            iconColor="text-amber-600"
+                            textColor="text-amber-700"
                         />
                         <SummaryCard
                             icon={<CornerUpLeft size={20} />}
                             label="Devolvidas"
                             value={counts.RETURNED}
-                            color="bg-orange-900/30"
-                            border="border-orange-600"
-                            textColor="text-orange-400"
+                            color="bg-white"
+                            border="border-orange-200"
+                            iconBg="bg-orange-50"
+                            iconColor="text-orange-500"
+                            textColor="text-orange-600"
                         />
                         <SummaryCard
                             icon={<XCircle size={20} />}
                             label="Canceladas"
                             value={counts.CANCELED}
-                            color="bg-slate-700/50"
-                            border="border-slate-600"
-                            textColor="text-slate-400"
+                            color="bg-white"
+                            border="border-slate-200"
+                            iconBg="bg-slate-100"
+                            iconColor="text-slate-400"
+                            textColor="text-slate-500"
                         />
                     </div>
 
                     {/* 3. BARRA DE PROGRESSO + % */}
-                    <div className="bg-slate-700/50 backdrop-blur p-5 rounded-xl border border-slate-600">
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-white flex items-center gap-2">
-                                <TrendingUp size={18} className="text-teal-400" />
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                <TrendingUp size={18} className="text-teal-600" />
                                 Taxa de Conclusão
                             </h3>
                             <span className={`text-3xl font-black ${pctColor(counts.PERCENT)}`}>
                                 {counts.PERCENT}%
                             </span>
                         </div>
-                        <div className="w-full h-5 bg-slate-800 rounded-full overflow-hidden flex">
+                        <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex">
                             {counts.TOTAL > 0 && (
                                 <>
                                     <div
-                                        className="bg-green-500 h-full transition-all duration-500"
+                                        className="bg-emerald-500 h-full transition-all duration-500"
                                         style={{
                                             width: `${(counts.COMPLETED / counts.TOTAL) * 100}%`,
                                         }}
                                         title={`Concluídas: ${counts.COMPLETED}`}
                                     />
                                     <div
-                                        className="bg-amber-500 h-full transition-all duration-500"
+                                        className="bg-amber-400 h-full transition-all duration-500"
                                         style={{
                                             width: `${(counts.WAITING_APPROVAL / counts.TOTAL) * 100}%`,
                                         }}
                                         title={`Em Revisão: ${counts.WAITING_APPROVAL}`}
                                     />
                                     <div
-                                        className="bg-orange-500 h-full transition-all duration-500"
+                                        className="bg-orange-400 h-full transition-all duration-500"
                                         style={{
                                             width: `${(counts.RETURNED / counts.TOTAL) * 100}%`,
                                         }}
                                         title={`Devolvidas: ${counts.RETURNED}`}
                                     />
                                     <div
-                                        className="bg-red-500 h-full transition-all duration-500"
+                                        className="bg-red-400 h-full transition-all duration-500"
                                         style={{
                                             width: `${(counts.PENDING / counts.TOTAL) * 100}%`,
                                         }}
                                         title={`Pendentes: ${counts.PENDING}`}
                                     />
                                     <div
-                                        className="bg-slate-600 h-full transition-all duration-500"
+                                        className="bg-slate-300 h-full transition-all duration-500"
                                         style={{
                                             width: `${(counts.CANCELED / counts.TOTAL) * 100}%`,
                                         }}
@@ -374,48 +390,48 @@ export default function AdminReports({ goBack, lojas }) {
                             )}
                         </div>
                         {/* Legenda */}
-                        <div className="flex flex-wrap gap-4 mt-3 text-[10px] font-bold uppercase text-slate-400">
+                        <div className="flex flex-wrap gap-4 mt-3 text-[10px] font-bold uppercase text-slate-500">
                             <span className="flex items-center gap-1">
-                                <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
                                 Concluídas
                             </span>
                             <span className="flex items-center gap-1">
-                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
                                 Em Revisão
                             </span>
                             <span className="flex items-center gap-1">
-                                <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block" />
                                 Devolvidas
                             </span>
                             <span className="flex items-center gap-1">
-                                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />
                                 Pendentes
                             </span>
                             <span className="flex items-center gap-1">
-                                <span className="w-2.5 h-2.5 rounded-full bg-slate-600 inline-block" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-slate-300 inline-block" />
                                 Canceladas
                             </span>
                         </div>
                     </div>
 
                     {/* 4. EFICIÊNCIA POR CARGO */}
-                    <div className="bg-slate-700/50 backdrop-blur p-5 rounded-xl border border-slate-600">
-                        <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                            <Users size={18} className="text-teal-400" /> Eficiência por Cargo
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <Users size={18} className="text-teal-600" /> Eficiência por Cargo
                         </h3>
                         {byRole.length === 0 ? (
-                            <p className="text-slate-500 text-sm">Sem dados.</p>
+                            <p className="text-slate-400 text-sm">Sem dados.</p>
                         ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {byRole.map((r) => (
                                     <div key={r.name}>
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className="font-bold text-slate-300">{r.name}</span>
+                                        <div className="flex justify-between text-sm mb-1.5">
+                                            <span className="font-bold text-slate-700">{r.name}</span>
                                             <span className={`font-black ${pctColor(r.pct)}`}>
                                                 {r.done}/{r.total} ({r.pct.toFixed(0)}%)
                                             </span>
                                         </div>
-                                        <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+                                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                                             <div
                                                 className={`h-full rounded-full transition-all duration-700 ${pctBg(r.pct)}`}
                                                 style={{ width: `${r.pct}%` }}
@@ -429,36 +445,36 @@ export default function AdminReports({ goBack, lojas }) {
 
                     {/* 5. POR FUNCIONÁRIO */}
                     {byEmployee.length > 0 && (
-                        <div className="bg-slate-700/50 backdrop-blur p-3 sm:p-5 rounded-xl border border-slate-600 overflow-x-auto">
-                            <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                                <Users size={18} className="text-teal-400" /> Desempenho por
+                        <div className="bg-white p-3 sm:p-5 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Users size={18} className="text-teal-600" /> Desempenho por
                                 Funcionário
                             </h3>
                             <table className="w-full text-sm min-w-[500px]">
                                 <thead>
-                                    <tr className="text-left text-[10px] uppercase text-slate-400 border-b border-slate-600">
-                                        <th className="pb-2 pr-4">Funcionário</th>
-                                        <th className="pb-2 pr-4">Cargo</th>
-                                        <th className="pb-2 pr-4 text-center">Atribuídas</th>
-                                        <th className="pb-2 pr-4 text-center">Concluídas</th>
-                                        <th className="pb-2 text-right">%</th>
+                                    <tr className="text-left text-[10px] uppercase text-slate-500 border-b-2 border-slate-100">
+                                        <th className="pb-3 pr-4">Funcionário</th>
+                                        <th className="pb-3 pr-4">Cargo</th>
+                                        <th className="pb-3 pr-4 text-center">Atribuídas</th>
+                                        <th className="pb-3 pr-4 text-center">Concluídas</th>
+                                        <th className="pb-3 text-right">%</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {byEmployee.map((e, idx) => (
                                         <tr
                                             key={idx}
-                                            className="border-b border-slate-700/50 hover:bg-slate-600/20 transition-colors"
+                                            className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                                         >
-                                            <td className="py-2.5 pr-4 font-bold text-white">{e.name}</td>
-                                            <td className="py-2.5 pr-4 text-slate-400">{e.role}</td>
-                                            <td className="py-2.5 pr-4 text-center text-slate-300">
+                                            <td className="py-3 pr-4 font-bold text-slate-800">{e.name}</td>
+                                            <td className="py-3 pr-4 text-slate-500">{e.role}</td>
+                                            <td className="py-3 pr-4 text-center text-slate-600 font-semibold">
                                                 {e.total}
                                             </td>
-                                            <td className="py-2.5 pr-4 text-center text-slate-300">
+                                            <td className="py-3 pr-4 text-center text-slate-600 font-semibold">
                                                 {e.done}
                                             </td>
-                                            <td className={`py-2.5 text-right font-black ${pctColor(e.pct)}`}>
+                                            <td className={`py-3 text-right font-black ${pctColor(e.pct)}`}>
                                                 {e.pct.toFixed(0)}%
                                             </td>
                                         </tr>
@@ -470,10 +486,10 @@ export default function AdminReports({ goBack, lojas }) {
 
                     {/* 6. TAREFAS PENDENTES / ATRASADAS */}
                     {pendentes.length > 0 && (
-                        <div className="bg-slate-700/50 backdrop-blur p-5 rounded-xl border border-slate-600">
-                            <h3 className="font-bold text-white mb-4 flex items-center gap-2">
-                                <AlertCircle size={18} className="text-red-400" /> Tarefas Pendentes
-                                <span className="bg-red-500/20 text-red-400 text-xs font-black px-2 py-0.5 rounded-full ml-1">
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <AlertCircle size={18} className="text-red-500" /> Tarefas Pendentes
+                                <span className="bg-red-100 text-red-600 text-xs font-black px-2.5 py-0.5 rounded-full ml-1">
                                     {pendentes.length}
                                 </span>
                             </h3>
@@ -482,15 +498,15 @@ export default function AdminReports({ goBack, lojas }) {
                                     <div
                                         key={t.id}
                                         className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border transition-colors ${t.isLate
-                                            ? "bg-red-900/20 border-red-700/50"
+                                            ? "bg-red-50 border-red-200"
                                             : t.isReturned
-                                                ? "bg-orange-900/20 border-orange-700/50"
-                                                : "bg-slate-800/50 border-slate-700"
+                                                ? "bg-orange-50 border-orange-200"
+                                                : "bg-slate-50 border-slate-200"
                                             }`}
                                     >
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
-                                                <span className="font-bold text-white text-sm truncate">
+                                                <span className="font-bold text-slate-800 text-sm truncate">
                                                     {t.title}
                                                 </span>
                                                 {t.isLate && (
@@ -504,13 +520,13 @@ export default function AdminReports({ goBack, lojas }) {
                                                     </span>
                                                 )}
                                             </div>
-                                            <span className="text-[10px] text-slate-400">
+                                            <span className="text-[10px] text-slate-500">
                                                 {t.role} · {t.date}
                                             </span>
                                         </div>
                                         {t.due && (
                                             <span
-                                                className={`text-sm font-bold whitespace-nowrap ml-3 flex items-center gap-1 ${t.isLate ? "text-red-400" : "text-slate-400"
+                                                className={`text-sm font-bold whitespace-nowrap ml-3 flex items-center gap-1 ${t.isLate ? "text-red-500" : "text-slate-500"
                                                     }`}
                                             >
                                                 <Clock size={12} /> {t.due}
@@ -530,14 +546,16 @@ export default function AdminReports({ goBack, lojas }) {
 // ========================================================
 // SUB-COMPONENTE: Card de Resumo
 // ========================================================
-function SummaryCard({ icon, label, value, color, border, textColor = "text-white" }) {
+function SummaryCard({ icon, label, value, color, border, iconBg = "bg-slate-100", iconColor = "text-slate-600", textColor = "text-slate-800" }) {
     return (
         <div
-            className={`${color} ${border} border p-3 sm:p-4 rounded-xl text-center transition-all hover:scale-105 duration-200`}
+            className={`${color} ${border} border p-3 sm:p-4 rounded-xl text-center transition-all hover:shadow-md duration-200 shadow-sm`}
         >
-            <div className={`flex justify-center mb-2 opacity-60 ${textColor}`}>{icon}</div>
+            <div className={`flex justify-center mb-2`}>
+                <div className={`${iconBg} ${iconColor} p-1.5 rounded-lg`}>{icon}</div>
+            </div>
             <div className={`text-xl sm:text-2xl font-black ${textColor}`}>{value}</div>
-            <div className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-400 mt-1">{label}</div>
+            <div className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-500 mt-1">{label}</div>
         </div>
     );
 }

@@ -55,22 +55,56 @@ export default function KioskArea({ user, onLogout }) {
     const today = getLocalDate();
 
     // 1. BUSCA TAREFAS DO PRÓPRIO USUÁRIO (Aba A Fazer e Finalizadas)
-    const { data: myItems, error: err1 } = await supabase
+    // Com o back-end corrigido (timezone São Paulo), buscamos por scheduled_date = hoje
+    // + tarefas PENDENTES/DEVOLVIDAS de dias anteriores (atrasadas)
+    const { data: todayItems, error: err1a } = await supabase
       .from('checklist_items')
       .select(`
         *, 
         template:task_templates (
-          title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
+          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
         )
       `)
       .eq('store_id', user.store_id)
       .eq('scheduled_date', today);
 
-    if (!err1 && myItems) {
+    // Busca tarefas ATRASADAS (pendentes/devolvidas de dias anteriores)
+    const { data: overdueItems, error: err1b } = await supabase
+      .from('checklist_items')
+      .select(`
+        *, 
+        template:task_templates (
+          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
+        )
+      `)
+      .eq('store_id', user.store_id)
+      .lt('scheduled_date', today)
+      .in('status', ['PENDING', 'RETURNED']);
+
+    if (!err1a && !err1b) {
+      // Combina tarefas de hoje + atrasadas
+      const allItems = [...(todayItems || []), ...(overdueItems || [])];
+
+      // Deduplicação simples: se um template aparece hoje E atrasado, prioriza o de hoje
+      const seen = new Map();
+      allItems.forEach(item => {
+        const key = item.template_id || `raw-${item.id}`;
+        if (!seen.has(key)) {
+          seen.set(key, item);
+        } else {
+          // Se já existe, prioriza o de hoje
+          const existing = seen.get(key);
+          if (item.scheduled_date === today && existing.scheduled_date !== today) {
+            seen.set(key, item);
+          }
+        }
+      });
+
+      const uniqueItems = Array.from(seen.values());
+
       // Filtra tarefas: Mostra se for GERAL (role_id null) OU do cargo do usuário
-      const filtered = myItems.filter(item => {
-        if (!item.template) return false;
-        return item.template.role_id === null || item.template.role_id === user.role_id;
+      const filtered = uniqueItems.filter(item => {
+        return !item.template?.role_id || item.template?.role_id === user.role_id;
       });
 
       // ORDENAÇÃO INTELIGENTE

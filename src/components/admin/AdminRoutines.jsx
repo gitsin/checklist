@@ -111,13 +111,13 @@ export default function AdminRoutines({ goBack, lojas }) {
         <>
             <div className="animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
-                    <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-white min-h-[44px]"><ArrowLeft /> Voltar</button>
+                    <button onClick={goBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors min-h-[44px]"><ArrowLeft /> Voltar</button>
                     <button onClick={() => { setNovaRotina({ store_id: "", title: "", description: "", start_time: "", deadline_time: "", icon: "sun", notify_whatsapp: false }); setItensSelecionados([]); setModalNovaRotinaOpen(true); }} className="bg-amber-600 px-4 py-2 rounded font-bold hover:bg-amber-500 flex gap-2 items-center min-h-[44px] justify-center"><Plus size={18} /> Nova Rotina</button>
                 </div>
 
-                <div className="bg-slate-700 p-4 rounded border border-slate-600 mb-6">
-                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Filtrar por Loja</label>
-                    <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLojaRotina} onChange={e => setFiltroLojaRotina(e.target.value)}>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
+                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Filtrar por Loja</label>
+                    <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 transition-colors" value={filtroLojaRotina} onChange={e => setFiltroLojaRotina(e.target.value)}>
                         <option value="">Selecione a Loja...</option>
                         {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>

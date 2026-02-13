@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
-import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle } from "lucide-react";
 
 export default function AdminTasks({ goBack, lojas, roles }) {
     const [listaTemplates, setListaTemplates] = useState([]);
@@ -22,6 +22,10 @@ export default function AdminTasks({ goBack, lojas, roles }) {
     const [modalImportarOpen, setModalImportarOpen] = useState(false);
     const [importando, setImportando] = useState(false);
     const [logImportacao, setLogImportacao] = useState([]);
+
+    // Resultado da geração de rotina
+    const [modalResultadoOpen, setModalResultadoOpen] = useState(false);
+    const [resultadoGeracao, setResultadoGeracao] = useState({ sucesso: false, mensagem: "", porLoja: [], total: 0 });
 
     // --- Lógica de Filtros e Carregamento ---
 
@@ -101,9 +105,40 @@ export default function AdminTasks({ goBack, lojas, roles }) {
 
     async function gerarRotina() {
         setGerandoRotina(true);
-        const { error } = await supabase.rpc('generate_daily_checklist');
+
+        // Chama a function que gera APENAS templates criados hoje
+        // Retorna JSONB: { total, items: [{store_id}], data_referencia }
+        const { data: resultado, error } = await supabase.rpc('generate_same_day_tasks');
         setGerandoRotina(false);
-        if (error) alert(error.message); else alert("Rotina do dia gerada com sucesso!");
+
+        if (error) {
+            setResultadoGeracao({ sucesso: false, mensagem: error.message, porLoja: [], total: 0 });
+            setModalResultadoOpen(true);
+            return;
+        }
+
+        // Agrupar contagem por loja a partir do retorno da function
+        const contagemPorLoja = {};
+        (resultado?.items || []).forEach(item => {
+            contagemPorLoja[item.store_id] = (contagemPorLoja[item.store_id] || 0) + 1;
+        });
+
+        const porLoja = Object.entries(contagemPorLoja).map(([storeId, count]) => {
+            const loja = lojas.find(l => l.id === storeId);
+            return { nome: loja?.name || `Loja ${storeId}`, count };
+        }).sort((a, b) => b.count - a.count);
+
+        const total = resultado?.total || 0;
+
+        setResultadoGeracao({
+            sucesso: true,
+            mensagem: total === 0
+                ? "Todas as tarefas de hoje já foram geradas."
+                : `${total} tarefa${total !== 1 ? 's' : ''} gerada${total !== 1 ? 's' : ''} com sucesso!`,
+            porLoja,
+            total
+        });
+        setModalResultadoOpen(true);
     }
 
     // --- CSV Logic ---
@@ -168,7 +203,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         <>
             <div className="animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
-                    <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-white min-h-[44px]"><ArrowLeft /> Voltar</button>
+                    <button onClick={goBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors min-h-[44px]"><ArrowLeft /> Voltar</button>
                     <div className="flex flex-wrap gap-2">
                         <button onClick={() => setModalImportarOpen(true)} className="bg-slate-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-slate-500 flex gap-2 items-center text-sm min-h-[44px]"><FileUp size={18} /> Importar</button>
                         <button onClick={gerarRotina} disabled={gerandoRotina} className="bg-green-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-green-500 flex gap-2 items-center text-sm min-h-[44px]"><PlayCircle size={18} /> {gerandoRotina ? '...' : 'Gerar'}</button>
@@ -177,17 +212,17 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                 </div>
 
                 {/* Filtros */}
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 bg-slate-700 p-3 sm:p-4 rounded border border-slate-600">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Loja</label>
-                        <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroLojaTarefa} onChange={e => { setFiltroLojaTarefa(e.target.value); carregarCargosDoFiltro(e.target.value); }}>
+                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Loja</label>
+                        <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroLojaTarefa} onChange={e => { setFiltroLojaTarefa(e.target.value); carregarCargosDoFiltro(e.target.value); }}>
                             <option value="">Selecione a Loja...</option>
                             {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                         </select>
                     </div>
                     <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-400 mb-1 block">Cargo</label>
-                        <select className="bg-slate-800 p-2 rounded w-full border border-slate-500" value={filtroCargoTarefa} onChange={e => setFiltroCargoTarefa(e.target.value)} disabled={!filtroLojaTarefa}>
+                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Cargo</label>
+                        <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroCargoTarefa} onChange={e => setFiltroCargoTarefa(e.target.value)} disabled={!filtroLojaTarefa}>
                             <option value="">Todos Cargos</option>
                             {cargosFiltroDisponiveis.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
@@ -368,6 +403,75 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                     </div>
                 )
             }
+            {/* MODAL RESULTADO DA GERAÇÃO */}
+            {modalResultadoOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                        {/* Header do modal */}
+                        <div className={`p-5 text-center ${resultadoGeracao.sucesso ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-red-500 to-orange-600'}`}>
+                            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+                                {resultadoGeracao.sucesso
+                                    ? <CheckCircle2 size={32} className="text-white" />
+                                    : <AlertTriangle size={32} className="text-white" />
+                                }
+                            </div>
+                            <h3 className="text-xl font-black text-white">
+                                {resultadoGeracao.sucesso ? "Rotina Gerada!" : "Erro na Geração"}
+                            </h3>
+                            {resultadoGeracao.sucesso && (
+                                <p className="text-white/80 text-sm mt-1">
+                                    {resultadoGeracao.total} tarefa{resultadoGeracao.total !== 1 ? 's' : ''} no total para hoje
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Conteúdo */}
+                        <div className="p-5">
+                            {resultadoGeracao.sucesso && resultadoGeracao.porLoja.length > 0 ? (
+                                <>
+                                    <p className="text-xs font-bold text-slate-500 uppercase mb-3">Tarefas por Loja</p>
+                                    <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                                        {resultadoGeracao.porLoja.map((loja, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-lg bg-teal-100 flex items-center justify-center">
+                                                        <Store size={16} className="text-teal-600" />
+                                                    </div>
+                                                    <span className="font-bold text-slate-700 text-sm">{loja.nome}</span>
+                                                </div>
+                                                <span className="bg-teal-600 text-white text-xs font-black px-2.5 py-1 rounded-full">
+                                                    {loja.count} tarefa{loja.count !== 1 ? 's' : ''}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : !resultadoGeracao.sucesso ? (
+                                <p className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
+                                    {resultadoGeracao.mensagem}
+                                </p>
+                            ) : (
+                                <p className="text-slate-500 text-sm text-center py-4">
+                                    Nenhuma tarefa foi gerada para hoje.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-5 pb-5">
+                            <button
+                                onClick={() => setModalResultadoOpen(false)}
+                                className={`w-full py-3 rounded-xl font-bold text-white min-h-[48px] transition-all active:scale-95 ${resultadoGeracao.sucesso
+                                    ? 'bg-teal-600 hover:bg-teal-700'
+                                    : 'bg-slate-600 hover:bg-slate-700'
+                                    }`}
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
