@@ -27,6 +27,10 @@ export default function AdminTasks({ goBack, lojas, roles }) {
     const [modalResultadoOpen, setModalResultadoOpen] = useState(false);
     const [resultadoGeracao, setResultadoGeracao] = useState({ sucesso: false, mensagem: "", porLoja: [], total: 0 });
 
+    // Modal de confirmação ao salvar nova tarefa
+    const [modalTarefaSalvaOpen, setModalTarefaSalvaOpen] = useState(false);
+    const [tarefaSalvaResumo, setTarefaSalvaResumo] = useState(null);
+
     // --- Lógica de Filtros e Carregamento ---
 
     async function carregarCargosDoFiltro(lojaId) {
@@ -80,7 +84,31 @@ export default function AdminTasks({ goBack, lojas, roles }) {
             notify_whatsapp: novaTarefa.notifyWhatsapp,
             active: true
         });
-        if (error) alert(error.message); else { setModalNovaTarefaOpen(false); buscarTarefas(); }
+        if (error) {
+            alert(error.message);
+        } else {
+            // Monta resumo para exibir no modal
+            const freqMap = { daily: 'Diária', weekly: 'Semanal', monthly: 'Mensal' };
+            const mapaDiasSemana = { 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado', 7: 'Domingo' };
+            const lojaNome = lojas.find(l => l.id === novaTarefa.loja)?.name || 'N/A';
+            const cargoNome = roles.find(r => r.id === novaTarefa.cargo)?.name || 'N/A';
+
+            setTarefaSalvaResumo({
+                titulo: novaTarefa.titulo,
+                descricao: novaTarefa.desc,
+                frequencia: freqMap[novaTarefa.freq] || novaTarefa.freq,
+                loja: lojaNome,
+                cargo: cargoNome,
+                horario: novaTarefa.hora || null,
+                foto: novaTarefa.foto,
+                whatsapp: novaTarefa.notifyWhatsapp,
+                diaSemana: novaTarefa.freq === 'weekly' ? mapaDiasSemana[novaTarefa.diaSemana] : null,
+                diaMes: novaTarefa.freq === 'monthly' ? novaTarefa.diaMes : null,
+            });
+            setModalNovaTarefaOpen(false);
+            setModalTarefaSalvaOpen(true);
+            buscarTarefas();
+        }
     }
 
     async function salvarEdicaoTarefa() {
@@ -465,6 +493,95 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                     ? 'bg-teal-600 hover:bg-teal-700'
                                     : 'bg-slate-600 hover:bg-slate-700'
                                     }`}
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL TAREFA SALVA COM SUCESSO */}
+            {modalTarefaSalvaOpen && tarefaSalvaResumo && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 text-center bg-gradient-to-br from-emerald-500 to-teal-600">
+                            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+                                <CheckCircle2 size={32} className="text-white" />
+                            </div>
+                            <h3 className="text-xl font-black text-white">Tarefa Criada!</h3>
+                            <p className="text-white/80 text-sm mt-1">A tarefa foi salva com sucesso no sistema.</p>
+                        </div>
+
+                        {/* Resumo */}
+                        <div className="p-5 space-y-3">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-2">Resumo da Tarefa</p>
+
+                            <div className="bg-slate-50 rounded-lg border border-slate-100 p-4 space-y-2.5">
+                                <div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Título</span>
+                                    <p className="font-bold text-slate-800">{tarefaSalvaResumo.titulo}</p>
+                                </div>
+
+                                {tarefaSalvaResumo.descricao && (
+                                    <div>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Descrição</span>
+                                        <p className="text-sm text-slate-600">{tarefaSalvaResumo.descricao}</p>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Loja</span>
+                                        <p className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                                            <Store size={14} className="text-teal-600" /> {tarefaSalvaResumo.loja}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Cargo</span>
+                                        <p className="text-sm font-bold text-slate-700">{tarefaSalvaResumo.cargo}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded border border-blue-200 font-bold uppercase">
+                                        {tarefaSalvaResumo.frequencia}
+                                    </span>
+                                    {tarefaSalvaResumo.horario && (
+                                        <span className="bg-slate-200 text-slate-700 text-[10px] px-2 py-0.5 rounded border border-slate-300 font-bold uppercase">
+                                            ⏰ Até {tarefaSalvaResumo.horario}
+                                        </span>
+                                    )}
+                                    {tarefaSalvaResumo.diaSemana && (
+                                        <span className="bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded border border-orange-200 font-bold uppercase">
+                                            {tarefaSalvaResumo.diaSemana}
+                                        </span>
+                                    )}
+                                    {tarefaSalvaResumo.diaMes && (
+                                        <span className="bg-pink-100 text-pink-800 text-[10px] px-2 py-0.5 rounded border border-pink-200 font-bold uppercase">
+                                            Dia {tarefaSalvaResumo.diaMes}
+                                        </span>
+                                    )}
+                                    {tarefaSalvaResumo.foto && (
+                                        <span className="bg-purple-100 text-purple-800 text-[10px] px-2 py-0.5 rounded border border-purple-200 font-bold uppercase">
+                                            📷 Exige Foto
+                                        </span>
+                                    )}
+                                    {tarefaSalvaResumo.whatsapp && (
+                                        <span className="bg-green-100 text-green-800 text-[10px] px-2 py-0.5 rounded border border-green-200 font-bold uppercase flex items-center gap-0.5">
+                                            <MessageCircle size={10} /> WhatsApp
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-5 pb-5">
+                            <button
+                                onClick={() => setModalTarefaSalvaOpen(false)}
+                                className="w-full py-3 rounded-xl font-bold text-white min-h-[48px] transition-all active:scale-95 bg-teal-600 hover:bg-teal-700"
                             >
                                 Fechar
                             </button>

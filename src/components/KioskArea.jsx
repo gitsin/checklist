@@ -102,9 +102,14 @@ export default function KioskArea({ user, onLogout }) {
 
       const uniqueItems = Array.from(seen.values());
 
-      // Filtra tarefas: Mostra se for GERAL (role_id null) OU do cargo do usuário
+      // Filtra tarefas: Verifica loja + cargo
       const filtered = uniqueItems.filter(item => {
-        return !item.template?.role_id || item.template?.role_id === user.role_id;
+        // Guarda: ignora itens sem template associado
+        if (!item.template) return false;
+        // Guarda: garante que o item pertence à loja do usuário
+        if (item.store_id !== user.store_id) return false;
+        // Mostra se for GERAL (role_id null) OU do cargo do usuário
+        return !item.template.role_id || item.template.role_id === user.role_id;
       });
 
       // ORDENAÇÃO INTELIGENTE
