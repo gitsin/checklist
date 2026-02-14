@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
-import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle, Sparkles } from "lucide-react";
+import TaskWizard from "./TaskWizard";
 
 export default function AdminTasks({ goBack, lojas, roles }) {
     const [listaTemplates, setListaTemplates] = useState([]);
@@ -30,6 +31,9 @@ export default function AdminTasks({ goBack, lojas, roles }) {
     // Modal de confirmação ao salvar nova tarefa
     const [modalTarefaSalvaOpen, setModalTarefaSalvaOpen] = useState(false);
     const [tarefaSalvaResumo, setTarefaSalvaResumo] = useState(null);
+
+    // Wizard
+    const [wizardOpen, setWizardOpen] = useState(false);
 
     // --- Lógica de Filtros e Carregamento ---
 
@@ -235,6 +239,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                     <div className="flex flex-wrap gap-2">
                         <button onClick={() => setModalImportarOpen(true)} className="bg-slate-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-slate-500 flex gap-2 items-center text-sm min-h-[44px]"><FileUp size={18} /> Importar</button>
                         <button onClick={gerarRotina} disabled={gerandoRotina} className="bg-green-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-green-500 flex gap-2 items-center text-sm min-h-[44px]"><PlayCircle size={18} /> {gerandoRotina ? '...' : 'Gerar'}</button>
+                        <button onClick={() => setWizardOpen(true)} className="bg-indigo-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-indigo-500 flex gap-2 items-center text-sm min-h-[44px]"><Sparkles size={18} /> Assistente</button>
                         <button onClick={() => { setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false, notifyWhatsapp: false }); setCargosDisponiveis([]); setModalNovaTarefaOpen(true); }} className="bg-purple-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-purple-500 flex gap-2 items-center text-sm min-h-[44px]"><Plus size={18} /> Nova</button>
                     </div>
                 </div>
@@ -588,6 +593,21 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* WIZARD */}
+            {wizardOpen && (
+                <TaskWizard
+                    lojas={lojas}
+                    roles={roles}
+                    onClose={() => setWizardOpen(false)}
+                    onSaved={(resumo) => {
+                        setWizardOpen(false);
+                        setTarefaSalvaResumo(resumo);
+                        setModalTarefaSalvaOpen(true);
+                        buscarTarefas();
+                    }}
+                />
             )}
         </>
     );
