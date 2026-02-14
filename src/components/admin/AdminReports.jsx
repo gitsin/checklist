@@ -184,9 +184,9 @@ export default function AdminReports({ goBack, lojas }) {
             {/* HEADER */}
             <button
                 onClick={goBack}
-                className="flex items-center gap-2 mb-6 text-slate-500 hover:text-slate-800 transition-colors min-h-[44px]"
+                className="flex items-center gap-2 mb-6 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group"
             >
-                <ArrowLeft /> Voltar
+                <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar
             </button>
 
             <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
@@ -243,7 +243,7 @@ export default function AdminReports({ goBack, lojas }) {
                     <button
                         onClick={buscarDashboard}
                         disabled={loading}
-                        className="bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-lg min-h-[48px] w-full sm:w-auto"
+                        className="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.97] disabled:opacity-50 shadow-md hover:shadow-lg min-h-[48px] w-full sm:w-auto"
                     >
                         {loading ? (
                             "Carregando..."

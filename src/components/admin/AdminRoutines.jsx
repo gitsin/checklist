@@ -111,8 +111,8 @@ export default function AdminRoutines({ goBack, lojas }) {
         <>
             <div className="animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
-                    <button onClick={goBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors min-h-[44px]"><ArrowLeft /> Voltar</button>
-                    <button onClick={() => { setNovaRotina({ store_id: "", title: "", description: "", start_time: "", deadline_time: "", icon: "sun", notify_whatsapp: false }); setItensSelecionados([]); setModalNovaRotinaOpen(true); }} className="bg-amber-600 px-4 py-2 rounded font-bold hover:bg-amber-500 flex gap-2 items-center min-h-[44px] justify-center"><Plus size={18} /> Nova Rotina</button>
+                    <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar</button>
+                    <button onClick={() => { setNovaRotina({ store_id: "", title: "", description: "", start_time: "", deadline_time: "", icon: "sun", notify_whatsapp: false }); setItensSelecionados([]); setModalNovaRotinaOpen(true); }} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-amber-600 hover:to-orange-700 flex gap-2 items-center min-h-[44px] justify-center shadow-md hover:shadow-lg transition-all active:scale-[0.97]"><Plus size={16} /> Nova Rotina</button>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
@@ -144,12 +144,12 @@ export default function AdminRoutines({ goBack, lojas }) {
                                 <span className="text-xs font-bold text-slate-400 uppercase">{rotina.routine_items?.[0]?.count || 0} Tarefas</span>
                                 <div className="flex gap-2">
                                     {/* BOTÃO VISUALIZAR (OLHO) */}
-                                    <button onClick={() => abrirVisualizacao(rotina)} className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded transition-colors" title="Visualizar Detalhes">
-                                        <Eye size={20} />
+                                    <button onClick={() => abrirVisualizacao(rotina)} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors" title="Visualizar Detalhes">
+                                        <Eye size={18} />
                                     </button>
                                     {/* BOTÃO EDITAR (LÁPIS) */}
-                                    <button onClick={() => abrirEdicaoRotina(rotina)} className="text-slate-500 hover:text-amber-600 hover:bg-amber-50 p-2 rounded transition-colors" title="Editar Rotina">
-                                        <Pencil size={20} />
+                                    <button onClick={() => abrirEdicaoRotina(rotina)} className="text-slate-400 hover:text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition-colors" title="Editar Rotina">
+                                        <Pencil size={18} />
                                     </button>
                                 </div>
                             </div>
@@ -174,15 +174,15 @@ export default function AdminRoutines({ goBack, lojas }) {
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 mb-4">
                             <select className="border p-2 flex-1 rounded" value={tarefaSelecionadaId} onChange={e => setTarefaSelecionadaId(e.target.value)} disabled={!novaRotina.store_id}><option value="">Selecionar Tarefa...</option>{tarefasParaRotina.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select>
-                            <button onClick={adicionarItemNaRotina} className="bg-slate-800 text-white px-4 py-2 rounded font-bold min-h-[44px] w-full sm:w-auto flex items-center justify-center" disabled={!tarefaSelecionadaId}><Plus /></button>
+                            <button onClick={adicionarItemNaRotina} className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl font-bold min-h-[44px] w-full sm:w-auto flex items-center justify-center shadow-md hover:shadow-lg transition-all active:scale-[0.97]" disabled={!tarefaSelecionadaId}><Plus size={16} /></button>
                         </div>
                         <ul className="mb-4 space-y-2">{itensSelecionados.map((item, idx) => <li key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded border"><span className="text-sm">{idx + 1}. {item.title}</span> <button onClick={() => removerItemDaRotina(idx)} className="text-red-500"><Trash2 size={16} /></button></li>)}</ul>
                         <div className="flex items-center gap-2 mb-6">
                             <input type="checkbox" id="checkWhatsAppRotina" className="w-5 h-5 accent-green-600" checked={novaRotina.notify_whatsapp} onChange={e => setNovaRotina({ ...novaRotina, notify_whatsapp: e.target.checked })} />
                             <label htmlFor="checkWhatsAppRotina" className="text-sm font-bold text-green-700 flex items-center gap-1"><MessageCircle size={14} /> Notificar via WhatsApp</label>
                         </div>
-                        <button onClick={salvarNovaRotina} className="bg-amber-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar</button>
-                        <button onClick={() => setModalNovaRotinaOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+                        <button onClick={salvarNovaRotina} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-amber-600 hover:to-orange-700 transition-all active:scale-[0.98]">Salvar</button>
+                        <button onClick={() => setModalNovaRotinaOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
@@ -200,15 +200,15 @@ export default function AdminRoutines({ goBack, lojas }) {
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 mb-4">
                             <select className="border p-2 flex-1 rounded" value={tarefaSelecionadaId} onChange={e => setTarefaSelecionadaId(e.target.value)}><option value="">Adicionar Tarefa...</option>{tarefasParaRotina.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select>
-                            <button onClick={adicionarItemNaRotina} className="bg-slate-800 text-white px-4 py-2 rounded font-bold min-h-[44px] w-full sm:w-auto flex items-center justify-center"><Plus /></button>
+                            <button onClick={adicionarItemNaRotina} className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl font-bold min-h-[44px] w-full sm:w-auto flex items-center justify-center shadow-md hover:shadow-lg transition-all active:scale-[0.97]"><Plus size={16} /></button>
                         </div>
                         <ul className="mb-4 space-y-2">{itensSelecionados.map((item, idx) => <li key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded border"><span className="text-sm">{idx + 1}. {item.title}</span> <button onClick={() => removerItemDaRotina(idx)} className="text-red-500"><Trash2 size={16} /></button></li>)}</ul>
                         <div className="flex items-center gap-2 mb-6">
                             <input type="checkbox" className="w-5 h-5 accent-green-600" checked={editRotina.notify_whatsapp || false} onChange={e => setEditRotina({ ...editRotina, notify_whatsapp: e.target.checked })} />
                             <label className="text-sm font-bold text-green-700 flex items-center gap-1"><MessageCircle size={14} /> Notificar via WhatsApp</label>
                         </div>
-                        <button onClick={salvarEdicaoRotina} className="bg-blue-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar Alterações</button>
-                        <button onClick={() => setModalEditarRotinaOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+                        <button onClick={salvarEdicaoRotina} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-amber-600 hover:to-orange-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
+                        <button onClick={() => setModalEditarRotinaOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
@@ -251,7 +251,7 @@ export default function AdminRoutines({ goBack, lojas }) {
                         </div>
 
                         <div className="p-4 border-t bg-slate-50 rounded-b-xl flex justify-end pb-safe">
-                            <button onClick={() => setModalVisualizarOpen(false)} className="px-6 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg min-h-[48px]">Fechar</button>
+                            <button onClick={() => setModalVisualizarOpen(false)} className="px-6 py-3 bg-gradient-to-r from-slate-200 to-slate-300 hover:from-slate-300 hover:to-slate-400 text-slate-700 font-bold rounded-xl min-h-[48px] shadow-sm hover:shadow transition-all active:scale-[0.98]">Fechar</button>
                         </div>
                     </div>
                 </div>

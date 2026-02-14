@@ -36,13 +36,13 @@ export default function AdminStores({ goBack, lojas, onUpdate }) {
 
   return (
     <div className="animate-fade-in">
-      <button onClick={goBack} className="mb-6 flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors"><ArrowLeft /> Voltar</button>
+      <button onClick={goBack} className="mb-6 flex items-center gap-2 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar</button>
 
       <div className="bg-white p-6 rounded-xl mb-8 border border-slate-200 shadow-sm">
         <h3 className="text-xl font-bold mb-4 text-slate-800">Adicionar Nova Loja</h3>
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <input type="text" placeholder="Nome da Loja" className="flex-1 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={novaLojaNome} onChange={(e) => setNovaLojaNome(e.target.value)} />
-          <button onClick={criarLoja} className="bg-blue-600 px-6 py-3 rounded hover:bg-blue-500 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto"><Plus size={20} /> Criar</button>
+          <button onClick={criarLoja} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-blue-700 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto shadow-md hover:shadow-lg transition-all active:scale-[0.97]"><Plus size={18} /> Criar</button>
         </div>
       </div>
 
@@ -52,7 +52,7 @@ export default function AdminStores({ goBack, lojas, onUpdate }) {
             <div><span className="font-bold text-lg block">{loja.name}</span><span className="text-xs text-slate-500">Cod: {loja.InternalCode || '-'}</span>{loja.whatsapp_enabled && <span className="ml-2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-bold"><MessageCircle size={10} /> WhatsApp</span>}</div>
             <div className="flex gap-2">
               <button onClick={() => toggleStatusLoja(loja)}>{loja.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}</button>
-              <button onClick={() => abrirModalEditarLoja(loja)} className="text-blue-600 p-2"><Pencil size={20} /></button>
+              <button onClick={() => abrirModalEditarLoja(loja)} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Pencil size={18} /></button>
             </div>
           </div>
         ))}
@@ -73,8 +73,8 @@ export default function AdminStores({ goBack, lojas, onUpdate }) {
               <div className="flex items-center gap-3"><button type="button" onClick={() => setEditLojaData({ ...editLojaData, whatsapp_enabled: !editLojaData.whatsapp_enabled })}>{editLojaData.whatsapp_enabled ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft className="text-slate-400" size={30} />}</button><span className="text-sm font-bold text-slate-600">{editLojaData.whatsapp_enabled ? 'Notificações Ativas' : 'Notificações Desativadas'}</span></div>
             </div>
 
-            <button onClick={salvarEdicaoLoja} className="bg-blue-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar</button>
-            <button onClick={() => setModalEditarLojaOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+            <button onClick={salvarEdicaoLoja} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar</button>
+            <button onClick={() => setModalEditarLojaOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
           </div>
         </div>
       )}

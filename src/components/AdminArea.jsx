@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import {
-  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase
+  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ArrowLeft
 } from "lucide-react";
 
 import AdminStores from "./admin/AdminStores";
@@ -36,7 +36,7 @@ export default function AdminArea({ onExit }) {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6 sm:mb-8 border-b border-slate-300 pb-4">
           <h1 className="text-2xl sm:text-3xl font-bold flex gap-2 items-center"><Settings size={24} /> Administração</h1>
-          <button onClick={onExit} className="text-slate-500 hover:text-slate-800 underline text-sm sm:text-base min-h-[44px] flex items-center">← Sair</button>
+          <button onClick={onExit} className="text-slate-400 hover:text-slate-700 font-semibold text-sm sm:text-base min-h-[44px] flex items-center gap-2 group transition-colors"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform sm:hidden" />← Sair</button>
         </div>
 
         {/* MENU PRINCIPAL (RESTAUROU O BOTÃO DE CARGOS) */}

@@ -235,12 +235,12 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         <>
             <div className="animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
-                    <button onClick={goBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors min-h-[44px]"><ArrowLeft /> Voltar</button>
+                    <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar</button>
                     <div className="flex flex-wrap gap-2">
-                        <button onClick={() => setModalImportarOpen(true)} className="bg-slate-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-slate-500 flex gap-2 items-center text-sm min-h-[44px]"><FileUp size={18} /> Importar</button>
-                        <button onClick={gerarRotina} disabled={gerandoRotina} className="bg-green-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-green-500 flex gap-2 items-center text-sm min-h-[44px]"><PlayCircle size={18} /> {gerandoRotina ? '...' : 'Gerar'}</button>
-                        <button onClick={() => setWizardOpen(true)} className="bg-indigo-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-indigo-500 flex gap-2 items-center text-sm min-h-[44px]"><Sparkles size={18} /> Assistente</button>
-                        <button onClick={() => { setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false, notifyWhatsapp: false }); setCargosDisponiveis([]); setModalNovaTarefaOpen(true); }} className="bg-purple-600 px-3 sm:px-4 py-2 rounded font-bold hover:bg-purple-500 flex gap-2 items-center text-sm min-h-[44px]"><Plus size={18} /> Nova</button>
+                        <button onClick={() => setModalImportarOpen(true)} className="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-sm hover:shadow"><FileUp size={16} /> Importar</button>
+                        <button onClick={gerarRotina} disabled={gerandoRotina} className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-emerald-600 hover:to-green-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97] disabled:opacity-50"><PlayCircle size={16} /> {gerandoRotina ? '...' : 'Gerar'}</button>
+                        <button onClick={() => setWizardOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-indigo-600 hover:to-purple-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Sparkles size={16} /> Assistente</button>
+                        <button onClick={() => { setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false, notifyWhatsapp: false }); setCargosDisponiveis([]); setModalNovaTarefaOpen(true); }} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-purple-600 hover:to-violet-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Plus size={16} /> Nova</button>
                     </div>
                 </div>
 
@@ -358,8 +358,8 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                 <label htmlFor="checkWhatsAppNew" className="text-sm font-bold text-green-700 flex items-center gap-1"><MessageCircle size={14} /> Notificar via WhatsApp</label>
                             </div>
 
-                            <button onClick={salvarNovaTarefa} className="bg-purple-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar Tarefa</button>
-                            <button onClick={() => setModalNovaTarefaOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+                            <button onClick={salvarNovaTarefa} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-purple-600 hover:to-violet-700 transition-all active:scale-[0.98]">Salvar Tarefa</button>
+                            <button onClick={() => setModalNovaTarefaOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                         </div>
                     </div>
                 )
@@ -430,8 +430,8 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                 <label className="text-sm font-bold text-green-700 flex items-center gap-1"><MessageCircle size={14} /> Notificar via WhatsApp</label>
                             </div>
 
-                            <button onClick={salvarEdicaoTarefa} className="bg-purple-600 text-white px-4 py-3 rounded w-full font-bold min-h-[48px]">Salvar Alterações</button>
-                            <button onClick={() => setModalEditarTarefaOpen(false)} className="mt-2 text-slate-500 w-full py-3 min-h-[44px]">Cancelar</button>
+                            <button onClick={salvarEdicaoTarefa} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-3 rounded-xl w-full font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-purple-600 hover:to-violet-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
+                            <button onClick={() => setModalEditarTarefaOpen(false)} className="mt-2 text-slate-400 hover:text-slate-600 w-full py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                         </div>
                     </div>
                 )

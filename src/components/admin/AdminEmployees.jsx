@@ -94,10 +94,10 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
     return (
         <div className="animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-                <button onClick={goBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors"><ArrowLeft /> Voltar</button>
-                <div className="flex gap-1 bg-slate-200 p-1 rounded-lg">
-                    <button onClick={() => setActiveTab('colaboradores')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'colaboradores' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}>Colaboradores</button>
-                    <button onClick={() => setActiveTab('cargos')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'cargos' ? 'bg-blue-600 text-white shadow' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}>Cargos</button>
+                <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar</button>
+                <div className="flex gap-1 bg-slate-200 p-1 rounded-xl">
+                    <button onClick={() => setActiveTab('colaboradores')} className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'colaboradores' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}>Colaboradores</button>
+                    <button onClick={() => setActiveTab('cargos')} className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'cargos' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}>Cargos</button>
                 </div>
             </div>
 
@@ -107,7 +107,7 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                         <h3 className="text-xl font-bold mb-4 text-slate-800">Adicionar Cargo</h3>
                         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                             <input type="text" placeholder="Nome" className="flex-1 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={novoCargoNome} onChange={(e) => setNovoCargoNome(e.target.value)} />
-                            <button onClick={criarCargo} className="bg-blue-600 px-6 py-3 rounded hover:bg-blue-500 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto"><Plus size={20} /> Criar</button>
+                            <button onClick={criarCargo} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-blue-700 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto shadow-md hover:shadow-lg transition-all active:scale-[0.97]"><Plus size={18} /> Criar</button>
                         </div>
                     </div>
                     <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
@@ -115,7 +115,7 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                             <div key={cargo.id} className={`p-4 rounded-lg flex justify-between items-center border-l-8 ${cargo.active ? 'bg-white text-slate-800 border-green-500' : 'bg-slate-300 text-slate-500 border-slate-500'}`}>
                                 <div><span className="font-bold text-lg block">{cargo.name}</span></div>
                                 <div className="flex gap-2 items-center">
-                                    <button onClick={() => abrirModalEditarCargo(cargo)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-full transition-colors"><Pencil size={20} /></button>
+                                    <button onClick={() => abrirModalEditarCargo(cargo)} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Pencil size={18} /></button>
                                     <button onClick={() => toggleStatusCargo(cargo)}>{cargo.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}</button>
                                 </div>
                             </div>
@@ -127,7 +127,7 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
             {activeTab === 'colaboradores' && (
                 <div className="animate-fade-in">
                     <div className="flex justify-end mb-4">
-                        <button onClick={() => { setNovoColab({ nome: "", loja: "", cargo: "", gestor: "", phone: "" }); setModalNovoColabOpen(true); }} className="bg-blue-600 px-4 py-2 rounded font-bold hover:bg-blue-500 shadow flex items-center gap-2"><Plus size={18} /> Novo Colaborador</button>
+                        <button onClick={() => { setNovoColab({ nome: "", loja: "", cargo: "", gestor: "", phone: "" }); setModalNovoColabOpen(true); }} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg flex items-center gap-2 transition-all active:scale-[0.97]"><Plus size={16} /> Novo Colaborador</button>
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -152,7 +152,7 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                                 </div>
 
                                 <div className="flex gap-2 items-center">
-                                    <button onClick={() => { setEditColab({ id: f.id, nome: f.full_name, loja: f.store_id, cargo: f.role_id, gestor: f.manager_id || "", phone: f.phone || "" }); carregarGestores(f.store_id); setModalEditarColabOpen(true); }} className="text-blue-600 hover:bg-blue-50 p-2 rounded-full transition-colors"><Pencil size={20} /></button>
+                                    <button onClick={() => { setEditColab({ id: f.id, nome: f.full_name, loja: f.store_id, cargo: f.role_id, gestor: f.manager_id || "", phone: f.phone || "" }); carregarGestores(f.store_id); setModalEditarColabOpen(true); }} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Pencil size={18} /></button>
                                     <button onClick={() => toggleStatusColaborador(f)}>{f.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}</button>
                                 </div>
                             </div>
@@ -171,8 +171,8 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                         <select className="border p-2 w-full mb-3 rounded" onChange={e => setNovoColab({ ...novoColab, cargo: e.target.value })}><option value="">Cargo...</option>{roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                         <select className="border p-2 w-full mb-3 rounded" onChange={e => setNovoColab({ ...novoColab, gestor: e.target.value })} disabled={!novoColab.loja}><option value="">Sem Gestor...</option>{listaGestores.map(g => <option key={g.id} value={g.id}>{g.full_name}</option>)}</select>
                         <input className="border p-2 w-full mb-4 rounded" placeholder="Telefone (ex: +5511999999999)" value={novoColab.phone} onChange={e => setNovoColab({ ...novoColab, phone: e.target.value })} />
-                        <button onClick={salvarNovoColaborador} className="bg-blue-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar</button>
-                        <button onClick={() => setModalNovoColabOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+                        <button onClick={salvarNovoColaborador} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar</button>
+                        <button onClick={() => setModalNovoColabOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
@@ -189,8 +189,8 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                         </div>
                         <div className="mb-3"><label className="text-xs font-bold uppercase text-slate-500">Gestor</label><select className="border p-2 w-full rounded" value={editColab.gestor} onChange={e => setEditColab({ ...editColab, gestor: e.target.value })}><option value="">Sem Gestor</option>{listaGestores.filter(g => g.id !== editColab.id).map(g => <option key={g.id} value={g.id}>{g.full_name}</option>)}</select></div>
                         <div className="mb-4"><label className="text-xs font-bold uppercase text-slate-500">Telefone</label><input className="border p-2 w-full rounded" placeholder="+5511999999999" value={editColab.phone} onChange={e => setEditColab({ ...editColab, phone: e.target.value })} /></div>
-                        <button onClick={salvarEdicaoColaborador} className="bg-blue-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar Alterações</button>
-                        <button onClick={() => setModalEditarColabOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+                        <button onClick={salvarEdicaoColaborador} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
+                        <button onClick={() => setModalEditarColabOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
@@ -204,8 +204,8 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                             <label className="block text-sm font-bold text-slate-600 mb-1">Nome do Cargo</label>
                             <input className="border p-2 w-full rounded bg-white text-slate-800" value={editCargoData.name} onChange={e => setEditCargoData({ ...editCargoData, name: e.target.value })} />
                         </div>
-                        <button onClick={salvarEdicaoCargo} className="bg-blue-600 text-white w-full py-3 rounded font-bold min-h-[48px]">Salvar Alterações</button>
-                        <button onClick={() => setModalEditarCargoOpen(false)} className="mt-2 w-full text-slate-500 py-3 min-h-[44px]">Cancelar</button>
+                        <button onClick={salvarEdicaoCargo} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
+                        <button onClick={() => setModalEditarCargoOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
