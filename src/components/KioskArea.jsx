@@ -20,6 +20,7 @@ export default function KioskArea({ user, onLogout }) {
   const [modalCancelOpen, setModalCancelOpen] = useState(false);
   const [modalLaterOpen, setModalLaterOpen] = useState(false);
   const [modalReturnOpen, setModalReturnOpen] = useState(false); // Modal de Devolução (Gestor)
+  const [modalApproveOpen, setModalApproveOpen] = useState(false); // Modal de Aprovação (Gestor)
 
   const [taskToInteract, setTaskToInteract] = useState(null);
   const [interactionReason, setInteractionReason] = useState(""); // Usado para input de texto (Motivo/Hora)
@@ -27,6 +28,7 @@ export default function KioskArea({ user, onLogout }) {
 
   // --- ESTADO DE FOTO ---
   const [photosTaken, setPhotosTaken] = useState({}); // { [taskId]: true } — rastreia quais tarefas já têm foto
+  const [processingTask, setProcessingTask] = useState(null); // ID da tarefa sendo processada (evita duplo clique e dá feedback)
 
   // Relógio em tempo real (atualiza a cada minuto para verificar atrasos)
   useEffect(() => {
@@ -141,7 +143,6 @@ export default function KioskArea({ user, onLogout }) {
             worker:completed_by (full_name) 
         `)
         .eq('store_id', user.store_id)
-        .eq('scheduled_date', today)
         .eq('status', 'WAITING_APPROVAL');
 
       if (!err2) setReviewTasks(reviewItems || []);
@@ -212,44 +213,73 @@ export default function KioskArea({ user, onLogout }) {
     input.capture = 'environment'; // Abre câmera traseira no mobile
     input.onchange = (e) => {
       if (e.target.files && e.target.files.length > 0) {
+        console.log("Kiosk: Photo captured for task", taskId);
         // Foto capturada com sucesso
         setPhotosTaken(prev => ({ ...prev, [taskId]: true }));
+      } else {
+        console.log("Kiosk: No photo captured or cancelled");
       }
     };
     input.click();
   }
 
   async function handleComplete(taskId, requiresPhoto) {
-    // Se exige foto, abre câmera primeiro e conclui após captura
-    if (requiresPhoto) {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.capture = 'environment';
-      input.onchange = async (e) => {
-        if (e.target.files && e.target.files.length > 0) {
-          await completeTask(taskId);
-        }
-      };
-      input.click();
-      return;
-    }
+    if (processingTask === taskId) return;
+    setProcessingTask(taskId);
 
-    await completeTask(taskId);
+    try {
+      // Se exige foto, abre câmera primeiro e conclui após captura
+      if (requiresPhoto) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment';
+        input.style.display = 'none';
+
+        // VITAL: Adicionar ao DOM para garantir funcionamento em webviews/mobile
+        document.body.appendChild(input);
+
+        return new Promise((resolve) => {
+          input.onchange = async (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              await completeTaskInternal(taskId);
+            } else {
+              setProcessingTask(null); // Cancelou a foto
+            }
+            document.body.removeChild(input);
+            resolve();
+          };
+
+          input.click();
+        });
+      }
+
+      await completeTaskInternal(taskId);
+    } catch (error) {
+      console.error("Erro no fluxo de conclusão:", error);
+      alert("Ocorreu um erro ao tentar concluir a tarefa. Tente novamente.");
+      setProcessingTask(null);
+    }
   }
 
-  async function completeTask(taskId) {
-    const { error } = await supabase.from('checklist_items').update({
-      status: 'WAITING_APPROVAL',
-      completed_at: new Date().toISOString(),
-      completed_by: user.id
-    }).eq('id', taskId);
+  async function completeTaskInternal(taskId) {
+    try {
+      const { error } = await supabase.from('checklist_items').update({
+        status: 'WAITING_APPROVAL',
+        completed_at: new Date().toISOString(),
+        completed_by: user.id
+      }).eq('id', taskId);
 
-    if (error) alert("Erro ao concluir: " + error.message);
-    else {
+      if (error) throw error;
+
+      // Sucesso
       // Limpa o estado de foto desta tarefa
       setPhotosTaken(prev => { const copy = { ...prev }; delete copy[taskId]; return copy; });
-      fetchData();
+      await fetchData();
+    } catch (error) {
+      alert("Erro ao salvar no banco: " + error.message);
+    } finally {
+      setProcessingTask(null);
     }
   }
 
@@ -302,12 +332,25 @@ export default function KioskArea({ user, onLogout }) {
 
   // --- AÇÕES DO GESTOR (REVISÃO) ---
 
-  async function handleManagerApprove(taskId) {
-    // Aprovar finaliza a tarefa como COMPLETED
-    if (!confirm("Confirmar aprovação desta tarefa?")) return;
+  function handleManagerApprove(taskId) {
+    // Busca a tarefa completa para mostrar no modal
+    const task = reviewTasks.find(t => t.id === taskId) || teamOverdueTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    setTaskToInteract(task);
+    setModalApproveOpen(true);
+  }
+
+  async function confirmApprove() {
+    if (!taskToInteract) return;
+
+    setLoading(true);
     const { error } = await supabase.from('checklist_items').update({
       status: 'COMPLETED'
-    }).eq('id', taskId);
+    }).eq('id', taskToInteract.id);
+
+    setLoading(false);
+    setModalApproveOpen(false);
 
     if (!error) fetchData();
     else alert("Erro: " + error.message);
@@ -490,10 +533,17 @@ export default function KioskArea({ user, onLogout }) {
                           {/* Botão Concluir / Tirar foto e concluir (Ocupa 2 espaços) */}
                           <button
                             onClick={() => handleComplete(item.id, item.template?.requires_photo_evidence)}
-                            className="col-span-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-lg shadow-sm h-11 flex items-center justify-center gap-2 text-sm transition-all min-h-[44px]"
+                            disabled={processingTask === item.id}
+                            className={`col-span-2 text-white font-bold rounded-lg shadow-sm h-11 flex items-center justify-center gap-2 text-sm transition-all min-h-[44px] ${processingTask === item.id ? 'bg-slate-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}
                           >
-                            {item.template?.requires_photo_evidence && <Camera size={16} />}
-                            {isReturned ? 'Corrigir e Enviar' : (item.template?.requires_photo_evidence ? 'Tirar foto e concluir' : 'Concluir')}
+                            {processingTask === item.id ? (
+                              <>Processing...</>
+                            ) : (
+                              <>
+                                {item.template?.requires_photo_evidence && <Camera size={16} />}
+                                {isReturned ? 'Corrigir e Enviar' : (item.template?.requires_photo_evidence ? 'Tirar foto e concluir' : 'Concluir')}
+                              </>
+                            )}
                           </button>
 
                           {/* Botão Depois */}
@@ -719,6 +769,64 @@ export default function KioskArea({ user, onLogout }) {
         </div>
       )}
 
-    </div>
+      {/* 4. Modal APROVAR (Gestor) - Estilo "Success" */}
+      {
+        modalApproveOpen && taskToInteract && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-fade-in">
+            <div className="bg-white w-full sm:max-w-sm rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl max-h-[90dvh] overflow-y-auto pb-safe">
+              {/* Header com Gradiente */}
+              <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3 backdrop-blur-sm">
+                  <CheckCircle size={32} className="text-white" />
+                </div>
+                <h3 className="font-black text-white text-xl">Aprovar Tarefa?</h3>
+                <p className="text-emerald-50 text-sm mt-1">Confira os detalhes antes de finalizar.</p>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Resumo da Tarefa */}
+                <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Tarefa</span>
+                    <p className="font-bold text-slate-800 text-lg leading-tight">{taskToInteract.template?.title}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{taskToInteract.template?.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shrink-0 uppercase text-xs">
+                      {taskToInteract.worker?.full_name?.substring(0, 2) || 'Fn'}
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Realizada por</span>
+                      <p className="font-bold text-slate-700 text-sm">{taskToInteract.worker?.full_name}</p>
+                      <p className="text-[10px] text-slate-400">
+                        {taskToInteract.completed_at ? new Date(taskToInteract.completed_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botões */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={() => setModalApproveOpen(false)}
+                    className="py-3.5 bg-slate-100 font-bold text-slate-600 rounded-xl hover:bg-slate-200 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmApprove}
+                    className="py-3.5 bg-emerald-600 font-bold text-white rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    {loading ? 'Aprovando...' : <><CheckCircle size={18} /> Confirmar</>}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+    </div >
   );
 }
