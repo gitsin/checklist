@@ -42,25 +42,25 @@ export default function AdminArea({ onExit }) {
         {/* MENU PRINCIPAL (RESTAUROU O BOTÃO DE CARGOS) */}
         {screen === 'menu' && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6 animate-fade-in">
-            <button onClick={() => setScreen('lojas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-blue-50 border border-slate-200 hover:border-blue-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg hover:scale-105 transform duration-200 min-h-[100px] text-slate-700 hover:text-blue-600">
+            <button onClick={() => setScreen('lojas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-blue-50 border border-slate-200 hover:border-blue-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-blue-600">
               <Store size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Lojas</span>
             </button>
-            <button onClick={() => setScreen('colaboradores')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-green-50 border border-slate-200 hover:border-green-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg hover:scale-105 transform duration-200 min-h-[100px] text-slate-700 hover:text-green-600">
+            <button onClick={() => setScreen('colaboradores')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-green-50 border border-slate-200 hover:border-green-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-green-600">
               <User size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Equipe</span>
             </button>
 
             {/* CARD DE CARGOS (RESTAURADO) */}
-            <button onClick={() => setScreen('cargos')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-amber-50 border border-slate-200 hover:border-amber-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg hover:scale-105 transform duration-200 min-h-[100px] text-slate-700 hover:text-amber-600">
+            <button onClick={() => setScreen('cargos')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-amber-50 border border-slate-200 hover:border-amber-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-amber-600">
               <Briefcase size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Cargos</span>
             </button>
 
-            <button onClick={() => setScreen('tarefas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-purple-50 border border-slate-200 hover:border-purple-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg hover:scale-105 transform duration-200 min-h-[100px] text-slate-700 hover:text-purple-600">
+            <button onClick={() => setScreen('tarefas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-purple-50 border border-slate-200 hover:border-purple-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-purple-600">
               <ListChecks size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Tarefas</span>
             </button>
-            <button onClick={() => setScreen('rotinas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-amber-50 border border-slate-200 hover:border-amber-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg hover:scale-105 transform duration-200 min-h-[100px] text-slate-700 hover:text-amber-600">
+            <button onClick={() => setScreen('rotinas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-amber-50 border border-slate-200 hover:border-amber-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-amber-600">
               <Layers size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Rotinas</span>
             </button>
-            <button onClick={() => setScreen('relatorios')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-teal-50 border border-slate-200 hover:border-teal-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg hover:scale-105 transform duration-200 min-h-[100px] text-slate-700 hover:text-teal-600">
+            <button onClick={() => setScreen('relatorios')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-teal-50 border border-slate-200 hover:border-teal-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-teal-600">
               <BarChart3 size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Relatórios</span>
             </button>
           </div>

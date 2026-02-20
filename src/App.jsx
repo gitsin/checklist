@@ -150,12 +150,12 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
       <div className="bg-white/90 backdrop-blur-sm border-b border-slate-200 px-4 py-2 sticky top-0 z-50 shadow-sm">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Info size={14} className="text-blue-500" />
-            <span className="text-xs text-slate-500"><strong className="text-blue-600">Beta</strong> — Relate erros ao gerente</span>
+            <Info size={14} className="text-primary-500" />
+            <span className="text-xs text-slate-500"><strong className="text-primary-500">Beta</strong> — Relate erros ao gerente</span>
           </div>
           <button
             onClick={() => navigate('/manual')}
-            className="flex items-center gap-1 text-slate-500 hover:text-blue-600 text-xs font-medium px-2 py-1 rounded hover:bg-slate-200 transition-colors"
+            className="flex items-center gap-1 text-slate-500 hover:text-primary-500 text-xs font-medium px-2 py-1 rounded hover:bg-slate-200 transition-colors cursor-pointer"
           >
             <BookOpen size={12} /> Manual
           </button>
@@ -175,7 +175,7 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
         {!selectedStore && (
           <div className="animate-fade-in flex-1">
             <h2 className="text-xl font-bold text-slate-700 mb-6 flex items-center gap-2">
-              <Store size={22} className="text-blue-500" /> Selecione sua Loja
+              <Store size={22} className="text-primary-500" /> Selecione sua Loja
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -186,11 +186,11 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
                   className={`
                     bg-gradient-to-br ${STORE_COLORS[idx % STORE_COLORS.length]}
                     p-4 sm:p-6 rounded-2xl text-white font-bold text-base sm:text-lg text-left
-                    shadow-lg hover:shadow-2xl hover:scale-[1.03]
+                    shadow-lg hover:shadow-2xl hover:brightness-110
                     active:scale-95 transition-all duration-200
                     flex items-center gap-4 min-h-[90px]
                     border border-white/10
-                    animate-slide-up
+                    animate-slide-up cursor-pointer
                   `}
                   style={{ animationDelay: `${idx * 80}ms` }}
                 >
@@ -219,7 +219,7 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
             >
               <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
               <span className="text-slate-500">›</span>
-              <span className="text-blue-600 font-bold">{selectedStore.shortName || selectedStore.name}</span>
+              <span className="text-primary-500 font-bold">{selectedStore.shortName || selectedStore.name}</span>
             </button>
 
             <h2 className="text-2xl font-bold text-slate-800 mb-6">Quem é você?</h2>
@@ -239,11 +239,11 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
                     className={`
                       bg-white/95 backdrop-blur rounded-2xl p-3 sm:p-4
                       text-left flex items-center gap-3 min-h-[56px]
-                      shadow-md hover:shadow-xl hover:scale-[1.03]
+                      shadow-md hover:shadow-xl hover:border-primary-400
                       active:scale-95 transition-all duration-200
                       border border-slate-200/50
-                      animate-slide-up
-                      disabled:opacity-50
+                      animate-slide-up cursor-pointer
+                      disabled:opacity-50 disabled:cursor-not-allowed
                     `}
                     style={{ animationDelay: `${idx * 60}ms` }}
                   >
@@ -288,7 +288,7 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
           <div className="bg-white rounded-t-2xl sm:rounded-2xl p-6 sm:p-8 w-full sm:max-w-xs shadow-2xl pb-safe" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                <Shield size={20} className="text-blue-600" /> Área Admin
+                <Shield size={20} className="text-primary-500" /> Área Admin
               </h3>
               <button onClick={() => setShowAdminModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
@@ -300,8 +300,8 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
               type="password"
               autoFocus
               className={`w-full border-2 p-4 rounded-xl text-center text-2xl font-mono tracking-[0.5em] focus:outline-none transition-colors ${pwdError
-                ? 'border-red-400 bg-red-50 text-red-600 animate-[shake_0.3s_ease-in-out]'
-                : 'border-slate-200 focus:border-blue-500 text-slate-800'
+                ? 'border-error bg-red-50 text-error animate-[shake_0.3s_ease-in-out]'
+                : 'border-slate-200 focus:border-primary-500 text-slate-800'
                 }`}
               value={adminPwd}
               onChange={e => setAdminPwd(e.target.value)}
@@ -316,7 +316,7 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
 
             <button
               onClick={tryAdminLogin}
-              className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl mt-4 hover:bg-blue-700 active:scale-95 transition-all shadow-lg min-h-[48px]"
+              className="w-full bg-primary-500 text-white font-bold py-4 rounded-xl mt-4 hover:bg-primary-600 active:scale-95 transition-all shadow-lg min-h-[48px] cursor-pointer"
             >
               Entrar
             </button>
