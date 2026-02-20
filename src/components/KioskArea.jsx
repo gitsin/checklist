@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import {
   LogOut, Camera, X, CheckCircle, Clock,
   Calendar, AlertTriangle, AlertCircle,
-  Hourglass, UserCheck, CornerUpLeft, MessageSquare, FileText
+  Hourglass, UserCheck, CornerUpLeft, MessageSquare, FileText, Zap
 } from "lucide-react";
 
 export default function KioskArea({ user, onLogout }) {
@@ -27,6 +27,16 @@ export default function KioskArea({ user, onLogout }) {
   const [processingTask, setProcessingTask] = useState(null);
   const [photoModal, setPhotoModal] = useState(null);
 
+  // --- ESTADOS TAREFA IMEDIATA ---
+  const [spotModalOpen, setSpotModalOpen] = useState(false);
+  const [spotSuccessOpen, setSpotSuccessOpen] = useState(false);
+  const [spotRoles, setSpotRoles] = useState([]);
+  const [spotForm, setSpotForm] = useState({
+    title: '', description: '', role_id: '',
+    due_time: '', requires_photo: false, notify_whatsapp: false
+  });
+  const [spotLoading, setSpotLoading] = useState(false);
+
   // Relógio em tempo real
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -44,6 +54,57 @@ export default function KioskArea({ user, onLogout }) {
   function isManager() {
     const role = user.role_name?.toLowerCase() || "";
     return role.includes("gerente") || role.includes("diretor") || role.includes("admin") || role.includes("gestão") || role.includes("lider");
+  }
+
+  async function openSpotModal() {
+    const { data } = await supabase.from('roles').select('id, name').order('name');
+    setSpotRoles(data || []);
+    setSpotForm({ title: '', description: '', role_id: '', due_time: '', requires_photo: false, notify_whatsapp: false });
+    setSpotModalOpen(true);
+  }
+
+  async function handleCreateSpot() {
+    if (!spotForm.title.trim() || !spotForm.role_id) return;
+    setSpotLoading(true);
+
+    const { data: tpl, error: tplErr } = await supabase
+      .from('task_templates')
+      .insert({
+        title: spotForm.title.trim(),
+        description: spotForm.description.trim() || null,
+        frequency_type: 'spot',
+        store_id: user.store_id,
+        role_id: spotForm.role_id,
+        due_time: spotForm.due_time || null,
+        requires_photo_evidence: spotForm.requires_photo,
+        notify_whatsapp: spotForm.notify_whatsapp,
+        active: false,
+      })
+      .select('id')
+      .single();
+
+    if (tplErr || !tpl) {
+      setSpotLoading(false);
+      alert('Um erro ocorreu, por favor tente novamente.');
+      return;
+    }
+
+    const { error: itemErr } = await supabase.from('checklist_items').insert({
+      template_id: tpl.id,
+      store_id: user.store_id,
+      scheduled_date: getLocalDate(),
+      status: 'PENDING',
+    });
+
+    setSpotLoading(false);
+    if (itemErr) {
+      alert('Um erro ocorreu, por favor tente novamente.');
+      return;
+    }
+
+    setSpotModalOpen(false);
+    setSpotSuccessOpen(true);
+    fetchData();
   }
 
   // --- BUSCA DE DADOS ---
@@ -75,8 +136,22 @@ export default function KioskArea({ user, onLogout }) {
       .lt('scheduled_date', today)
       .in('status', ['PENDING', 'RETURNED']);
 
+    // Tarefas atrasadas finalizadas hoje (scheduled < hoje, mas completed_at = hoje)
+    const { data: overdueFinishedToday } = await supabase
+      .from('checklist_items')
+      .select(`
+        *,
+        template:task_templates (
+          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
+        )
+      `)
+      .eq('store_id', user.store_id)
+      .lt('scheduled_date', today)
+      .in('status', ['COMPLETED', 'WAITING_APPROVAL'])
+      .gte('completed_at', `${today}T03:00:00Z`); // midnight São Paulo = 03:00 UTC
+
     if (!err1a && !err1b) {
-      const allItems = [...(todayItems || []), ...(overdueItems || [])];
+      const allItems = [...(todayItems || []), ...(overdueItems || []), ...(overdueFinishedToday || [])];
 
       const seen = new Map();
       allItems.forEach(item => {
@@ -459,8 +534,9 @@ export default function KioskArea({ user, onLogout }) {
               const done = item.status === 'COMPLETED';
               const requiresPhoto = item.template?.requires_photo_evidence;
 
+              const isSpot = item.template?.frequency_type === 'spot';
               const freqMap = { daily: 'Diário', weekly: 'Semanal', monthly: 'Mensal' };
-              const freqLabel = freqMap[item.template?.frequency_type] || '';
+              const freqLabel = !isSpot ? (freqMap[item.template?.frequency_type] || '') : '';
 
               let cardBg = 'bg-yellow-50 border-yellow-300';
               let borderLeft = 'border-l-yellow-500';
@@ -501,7 +577,15 @@ export default function KioskArea({ user, onLogout }) {
                           <Calendar size={10} /> {freqLabel}
                         </span>
                       )}
-                      {item.template?.due_time && (
+                      {isSpot && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-200 whitespace-nowrap">
+                          <Zap size={10} />
+                          {item.template?.due_time
+                            ? `Fazer hoje até as ${item.template.due_time.slice(0, 5)}`
+                            : 'Fazer hoje'}
+                        </span>
+                      )}
+                      {!isSpot && item.template?.due_time && (
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap border ${isLateTask ? 'text-red-700 bg-red-200 border-red-300' : 'text-slate-600 bg-slate-200 border-slate-300'}`}>
                           <Clock size={10} /> Até {item.template.due_time.slice(0, 5)}
                         </span>
@@ -537,7 +621,7 @@ export default function KioskArea({ user, onLogout }) {
                           className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold rounded-lg border border-amber-300 h-11 flex items-center justify-center gap-2 text-sm transition-colors min-h-[44px] cursor-pointer"
                         >
                           <FileText size={16} />
-                          {requiresPhoto ? 'Foto e finalizar c/ obs' : 'Finalizar c/ obs'}
+                          {requiresPhoto ? 'Foto e Finalizar c/ obs' : 'Finalizar c/ obs'}
                         </button>
                       </div>
                     )}
@@ -638,8 +722,9 @@ export default function KioskArea({ user, onLogout }) {
             )}
             {teamOverdueTasks.map(item => {
               const isReturned = item.status === 'RETURNED';
+              const isSpot = item.template?.frequency_type === 'spot';
               const freqMap = { daily: 'Diário', weekly: 'Semanal', monthly: 'Mensal' };
-              const freqLabel = freqMap[item.template?.frequency_type] || '';
+              const freqLabel = !isSpot ? (freqMap[item.template?.frequency_type] || '') : '';
 
               let responsavelLabel = '';
               if (isReturned && item.worker?.full_name) {
@@ -671,7 +756,15 @@ export default function KioskArea({ user, onLogout }) {
                           <Calendar size={10} /> {freqLabel}
                         </span>
                       )}
-                      {item.template?.due_time && (
+                      {isSpot && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-200 whitespace-nowrap">
+                          <Zap size={10} />
+                          {item.template?.due_time
+                            ? `Fazer hoje até as ${item.template.due_time.slice(0, 5)}`
+                            : 'Fazer hoje'}
+                        </span>
+                      )}
+                      {!isSpot && item.template?.due_time && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase text-red-700 bg-red-200 border border-red-300">
                           <Clock size={10} /> Até {item.template.due_time.slice(0, 5)}
                         </span>
@@ -695,6 +788,16 @@ export default function KioskArea({ user, onLogout }) {
         )}
 
       </div>
+
+      {/* FAB TAREFA IMEDIATA */}
+      {isManager() && (
+        <button
+          onClick={openSpotModal}
+          className="fixed bottom-6 right-4 z-40 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-full shadow-xl flex items-center gap-2 px-5 py-3.5 active:scale-95 transition-all"
+        >
+          <Zap size={18} /> Tarefa Imediata
+        </button>
+      )}
 
       {/* MODAIS */}
 
@@ -803,6 +906,119 @@ export default function KioskArea({ user, onLogout }) {
                   {loading ? 'Aprovando...' : <><CheckCircle size={18} /> Confirmar</>}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal TAREFA IMEDIATA */}
+      {spotModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-fade-in">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl max-h-[90dvh] overflow-y-auto pb-safe">
+            <div className="bg-violet-50 p-5 text-center border-b border-violet-100">
+              <div className="bg-violet-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 text-violet-600"><Zap size={24} /></div>
+              <h3 className="font-bold text-violet-900 text-lg">Nova Tarefa Imediata</h3>
+              <p className="text-xs text-violet-700 mt-1">A tarefa aparecerá para os funcionários do cargo selecionado.</p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">Título *</label>
+                <input
+                  type="text"
+                  className="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-violet-400"
+                  placeholder="Ex: Limpar a área externa urgente"
+                  value={spotForm.title}
+                  onChange={e => setSpotForm(f => ({ ...f, title: e.target.value }))}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">Descrição (opcional)</label>
+                <textarea
+                  className="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-violet-400 h-20 resize-none"
+                  placeholder="Detalhes adicionais..."
+                  value={spotForm.description}
+                  onChange={e => setSpotForm(f => ({ ...f, description: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">Cargo responsável *</label>
+                <select
+                  className="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-violet-400 bg-white"
+                  value={spotForm.role_id}
+                  onChange={e => setSpotForm(f => ({ ...f, role_id: e.target.value }))}
+                >
+                  <option value="">Selecione um cargo...</option>
+                  {spotRoles.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase mb-1.5 block">Hora limite (opcional)</label>
+                <input
+                  type="time"
+                  className="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-violet-400"
+                  value={spotForm.due_time}
+                  onChange={e => setSpotForm(f => ({ ...f, due_time: e.target.value }))}
+                />
+              </div>
+              <div className="flex items-center justify-between py-2 border-t border-slate-100">
+                <span className="text-sm font-bold text-slate-600">Exige foto</span>
+                <button
+                  onClick={() => setSpotForm(f => ({ ...f, requires_photo: !f.requires_photo }))}
+                  className={`w-12 h-6 rounded-full transition-colors ${spotForm.requires_photo ? 'bg-violet-500' : 'bg-slate-200'}`}
+                >
+                  <span className={`block w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${spotForm.requires_photo ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between py-2 border-t border-slate-100">
+                <span className="text-sm font-bold text-slate-600">Notificar WhatsApp</span>
+                <button
+                  onClick={() => setSpotForm(f => ({ ...f, notify_whatsapp: !f.notify_whatsapp }))}
+                  className={`w-12 h-6 rounded-full transition-colors ${spotForm.notify_whatsapp ? 'bg-violet-500' : 'bg-slate-200'}`}
+                >
+                  <span className={`block w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${spotForm.notify_whatsapp ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            </div>
+            <div className="flex p-4 sm:p-5 gap-2 sm:gap-3 bg-slate-50 border-t border-slate-100">
+              <button
+                onClick={() => setSpotModalOpen(false)}
+                className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-200 rounded-lg transition-colors min-h-[48px] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateSpot}
+                disabled={spotLoading || !spotForm.title.trim() || !spotForm.role_id}
+                className="flex-1 py-3 font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg shadow-md transition-all min-h-[48px] cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              >
+                {spotLoading ? 'Criando...' : <><Zap size={16} /> Criar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal SUCESSO TAREFA IMEDIATA */}
+      {spotSuccessOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-fade-in">
+          <div className="bg-white w-full sm:max-w-sm rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl pb-safe">
+            <div className="bg-violet-50 p-6 text-center border-b border-violet-100">
+              <div className="bg-violet-100 w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 text-violet-600">
+                <Zap size={28} />
+              </div>
+              <h3 className="font-bold text-violet-900 text-lg">Tarefa criada!</h3>
+              <p className="text-xs text-violet-700 mt-1">A tarefa imediata foi enviada para os funcionários do cargo selecionado.</p>
+            </div>
+            <div className="p-5">
+              <button
+                onClick={() => setSpotSuccessOpen(false)}
+                className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-all active:scale-95 min-h-[48px] cursor-pointer"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>
