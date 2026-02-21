@@ -175,10 +175,12 @@ export default function KioskArea({ user, onLogout }) {
       });
 
       const sorted = filtered.sort((a, b) => {
-        if (a.status === 'RETURNED' && b.status !== 'RETURNED') return -1;
-        if (a.status !== 'RETURNED' && b.status === 'RETURNED') return 1;
+        // Próprias tarefas em WAITING_APPROVAL ficam no final (já submetidas)
         if (a.status === 'WAITING_APPROVAL' && b.status !== 'WAITING_APPROVAL') return 1;
         if (a.status !== 'WAITING_APPROVAL' && b.status === 'WAITING_APPROVAL') return -1;
+        // Ordena pela data de vencimento: mais antiga primeiro
+        if (a.scheduled_date !== b.scheduled_date) return a.scheduled_date.localeCompare(b.scheduled_date);
+        // Dentro do mesmo dia, pelo horário mais cedo primeiro
         const timeA = a.template?.due_time || '23:59';
         const timeB = b.template?.due_time || '23:59';
         return timeA.localeCompare(timeB);
@@ -500,17 +502,17 @@ export default function KioskArea({ user, onLogout }) {
 
           <button onClick={() => setActiveTab('todo')} className={`flex-1 py-2.5 px-3 sm:px-4 whitespace-nowrap rounded-md font-bold text-xs sm:text-sm flex justify-center items-center gap-1.5 sm:gap-2 transition-all min-h-[44px] cursor-pointer ${activeTab === 'todo' ? 'bg-primary-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
             <Clock size={16} /> A Fazer
-            <span className="ml-1 bg-white/20 text-white text-xs px-2 rounded-full">
-              {tasks.filter(t => ['PENDING', 'RETURNED'].includes(t.status)).length}
-            </span>
+            {(() => {
+              const ownCount = tasks.filter(t => ['PENDING', 'RETURNED'].includes(t.status)).length;
+              const reviewCount = isManager() ? reviewTasks.length : 0;
+              const total = ownCount + reviewCount;
+              return total > 0 ? (
+                <span className={`ml-1 text-xs px-2 rounded-full font-black ${activeTab === 'todo' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                  {total}
+                </span>
+              ) : null;
+            })()}
           </button>
-
-          {isManager() && (
-            <button onClick={() => setActiveTab('review')} className={`flex-1 py-2.5 px-3 sm:px-4 whitespace-nowrap rounded-md font-bold text-xs sm:text-sm flex justify-center items-center gap-1.5 sm:gap-2 transition-all min-h-[44px] cursor-pointer ${activeTab === 'review' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
-              <UserCheck size={16} /> Revisão
-              {reviewTasks.length > 0 && <span className="ml-1 bg-white text-amber-600 font-black text-xs px-2 rounded-full animate-pulse">{reviewTasks.length}</span>}
-            </button>
-          )}
 
           <button onClick={() => setActiveTab('done')} className={`flex-1 py-2.5 px-3 sm:px-4 whitespace-nowrap rounded-md font-bold text-xs sm:text-sm flex justify-center items-center gap-1.5 sm:gap-2 transition-all min-h-[44px] cursor-pointer ${activeTab === 'done' ? 'bg-success text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
             <CheckCircle size={16} /> Finalizadas
@@ -527,7 +529,7 @@ export default function KioskArea({ user, onLogout }) {
         {/* LISTA DE TAREFAS (A FAZER / FINALIZADAS) */}
         {activeTab !== 'review' && activeTab !== 'team' && (
           <div className="space-y-3">
-            {!loading && visibleTasks.length === 0 && (
+            {!loading && visibleTasks.length === 0 && !(activeTab === 'todo' && isManager() && reviewTasks.length > 0) && (
               <div className="text-center py-16 text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
                 <CheckCircle size={40} className="mx-auto mb-2 opacity-20" />
                 <p className="font-medium">Nenhuma tarefa encontrada.</p>
@@ -645,10 +647,80 @@ export default function KioskArea({ user, onLogout }) {
                 </div>
               );
             })}
+            {/* TAREFAS DE REVISÃO — apenas na aba "A Fazer" do gestor */}
+            {activeTab === 'todo' && isManager() && reviewTasks.length > 0 && (
+              <div className="space-y-4 mt-1">
+                {visibleTasks.length > 0 && (
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="flex-1 h-px bg-amber-200" />
+                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
+                      <UserCheck size={11} /> Para revisar
+                    </span>
+                    <div className="flex-1 h-px bg-amber-200" />
+                  </div>
+                )}
+                {reviewTasks.map(item => (
+                  <div key={item.id} className="bg-white rounded-xl shadow-lg border border-amber-200 overflow-hidden">
+                    <div className="bg-amber-50 px-5 py-3 border-b border-amber-100 flex justify-between items-center">
+                      <span className="text-xs font-black text-amber-600 uppercase tracking-wide">Revisão Necessária</span>
+                      <span className="text-xs font-bold text-slate-500">
+                        {new Date(item.completed_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="p-5">
+                      <h3 className="font-bold text-lg text-slate-800 mb-1">{item.template?.title}</h3>
+                      <p className="text-sm text-slate-500 mb-4">{item.template?.description}</p>
+
+                      <div className="flex items-center gap-3 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                        <div className="bg-blue-100 p-2 rounded-full text-blue-600"><UserCheck size={20} /></div>
+                        <div className="flex-1">
+                          <span className="block font-bold text-slate-700 text-sm">{item.worker?.full_name || "Funcionário"}</span>
+                          <span className="text-xs text-slate-400">Finalizou com observação</span>
+                        </div>
+                      </div>
+
+                      {item.notes && (
+                        <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                          <div className="font-bold flex items-center gap-2 mb-1 text-amber-700 text-xs uppercase"><FileText size={14} /> Observação:</div>
+                          <p className="text-slate-700 text-sm">"{item.notes}"</p>
+                        </div>
+                      )}
+
+                      {item.template?.requires_photo_evidence && (
+                        item.evidence_image_url ? (
+                          <div className="mb-4">
+                            <img
+                              src={item.evidence_image_url}
+                              alt="Evidência"
+                              onClick={() => setPhotoModal(item.evidence_image_url)}
+                              className="w-full max-h-48 object-cover rounded-lg border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
+                            />
+                          </div>
+                        ) : (
+                          <div className="mb-4 p-4 bg-slate-100 rounded border border-slate-200 text-center text-slate-400 text-xs">
+                            <Camera size={24} className="mx-auto mb-1 opacity-50" />
+                            Sem foto anexada
+                          </div>
+                        )
+                      )}
+
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                        <button onClick={() => openReturnModal(item)} className="flex-1 py-3 bg-white border-2 border-orange-300 text-orange-600 font-bold rounded-lg hover:bg-orange-50 flex items-center justify-center gap-2 transition-colors min-h-[48px] cursor-pointer">
+                          <CornerUpLeft size={18} /> Devolver
+                        </button>
+                        <button onClick={() => handleManagerApprove(item.id)} className="flex-1 py-3 bg-success text-white font-bold rounded-lg hover:brightness-110 shadow-md flex items-center justify-center gap-2 transition-colors min-h-[48px] cursor-pointer">
+                          <CheckCircle size={18} /> Aprovar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* ABA DE REVISÃO DO GESTOR */}
+        {/* ABA DE REVISÃO DO GESTOR — mantida apenas para compatibilidade, não mais acessível via tab */}
         {activeTab === 'review' && isManager() && (
           <div className="space-y-4">
             {!loading && reviewTasks.length === 0 && (
@@ -661,7 +733,7 @@ export default function KioskArea({ user, onLogout }) {
               <div key={item.id} className="bg-white rounded-xl shadow-lg border border-amber-200 overflow-hidden">
                 <div className="bg-amber-50 px-5 py-3 border-b border-amber-100 flex justify-between items-center">
                   <span className="text-xs font-black text-amber-600 uppercase tracking-wide">Revisão Necessária</span>
-                  <span className="text-xs font-bold text-slate-500">{new Date(item.completed_at).toLocaleTimeString().slice(0, 5)}</span>
+                  <span className="text-xs font-bold text-slate-500">{new Date(item.completed_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="p-5">
                   <h3 className="font-bold text-lg text-slate-800 mb-1">{item.template?.title}</h3>
