@@ -1,41 +1,44 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../supabaseClient";
 import {
   LogOut, Camera, X, CheckCircle, Clock,
   Calendar, AlertTriangle, AlertCircle,
   Hourglass, UserCheck, CornerUpLeft, MessageSquare, FileText, Zap
 } from "lucide-react";
 
+import { useKioskData } from "../hooks/useKioskData";
+import { useTaskActions } from "../hooks/useTaskActions";
+import { useManagerActions } from "../hooks/useManagerActions";
+import { useSpotTask } from "../hooks/useSpotTask";
+
 export default function KioskArea({ user, onLogout }) {
-  // --- ESTADOS GERAIS ---
-  const [tasks, setTasks] = useState([]);
-  const [reviewTasks, setReviewTasks] = useState([]);
-  const [teamOverdueTasks, setTeamOverdueTasks] = useState([]);
   const [activeTab, setActiveTab] = useState('todo');
-  const [loading, setLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  // --- ESTADOS DOS MODAIS ---
-  const [modalObsOpen, setModalObsOpen] = useState(false); // Modal de observação (funcionário)
-  const [modalReturnOpen, setModalReturnOpen] = useState(false); // Modal de Devolução (Gestor)
-  const [modalApproveOpen, setModalApproveOpen] = useState(false); // Modal de Aprovação (Gestor)
-
-  const [taskToInteract, setTaskToInteract] = useState(null);
-  const [observacao, setObservacao] = useState("");
-
-  // --- ESTADO DE FOTO ---
-  const [processingTask, setProcessingTask] = useState(null);
   const [photoModal, setPhotoModal] = useState(null);
 
-  // --- ESTADOS TAREFA IMEDIATA ---
-  const [spotModalOpen, setSpotModalOpen] = useState(false);
-  const [spotSuccessOpen, setSpotSuccessOpen] = useState(false);
-  const [spotRoles, setSpotRoles] = useState([]);
-  const [spotForm, setSpotForm] = useState({
-    title: '', description: '', role_id: '',
-    due_time: '', requires_photo: false, notify_whatsapp: false
-  });
-  const [spotLoading, setSpotLoading] = useState(false);
+  const { tasks, reviewTasks, teamOverdueTasks, loading, setLoading, fetchData, isManager } = useKioskData(user);
+
+  const {
+    processingTask,
+    modalObsOpen, setModalObsOpen,
+    taskToFinalize,
+    obsText, setObsText,
+    handleFinalizarOk, openObsModal, confirmFinalizarComObs,
+  } = useTaskActions(user, fetchData);
+
+  const {
+    modalReturnOpen, setModalReturnOpen,
+    modalApproveOpen, setModalApproveOpen,
+    taskToReview,
+    returnNote, setReturnNote,
+    handleManagerApprove, confirmApprove, openReturnModal, confirmReturn,
+  } = useManagerActions(user, fetchData, reviewTasks, teamOverdueTasks, setLoading);
+
+  const {
+    spotModalOpen, setSpotModalOpen,
+    spotSuccessOpen, setSpotSuccessOpen,
+    spotRoles, spotForm, setSpotForm, spotLoading,
+    openSpotModal, handleCreateSpot,
+  } = useSpotTask(user, fetchData);
 
   // Relógio em tempo real
   useEffect(() => {
@@ -43,424 +46,6 @@ export default function KioskArea({ user, onLogout }) {
     fetchData();
     return () => clearInterval(timer);
   }, [activeTab]);
-
-  function getLocalDate() {
-    const date = new Date();
-    const offset = date.getTimezoneOffset();
-    date.setMinutes(date.getMinutes() - offset);
-    return date.toISOString().split('T')[0];
-  }
-
-  function isManager() {
-    const role = user.role_name?.toLowerCase() || "";
-    return role.includes("gerente") || role.includes("diretor") || role.includes("admin") || role.includes("gestão") || role.includes("lider");
-  }
-
-  async function openSpotModal() {
-    const { data } = await supabase.from('roles').select('id, name').order('name');
-    setSpotRoles(data || []);
-    setSpotForm({ title: '', description: '', role_id: '', due_time: '', requires_photo: false, notify_whatsapp: false });
-    setSpotModalOpen(true);
-  }
-
-  async function handleCreateSpot() {
-    if (!spotForm.title.trim() || !spotForm.role_id) return;
-    setSpotLoading(true);
-
-    const { data: tpl, error: tplErr } = await supabase
-      .from('task_templates')
-      .insert({
-        title: spotForm.title.trim(),
-        description: spotForm.description.trim() || null,
-        frequency_type: 'spot',
-        store_id: user.store_id,
-        role_id: spotForm.role_id,
-        due_time: spotForm.due_time || null,
-        requires_photo_evidence: spotForm.requires_photo,
-        notify_whatsapp: spotForm.notify_whatsapp,
-        active: false,
-      })
-      .select('id')
-      .single();
-
-    if (tplErr || !tpl) {
-      setSpotLoading(false);
-      alert('Um erro ocorreu, por favor tente novamente.');
-      return;
-    }
-
-    const { error: itemErr } = await supabase.from('checklist_items').insert({
-      template_id: tpl.id,
-      store_id: user.store_id,
-      scheduled_date: getLocalDate(),
-      status: 'PENDING',
-    });
-
-    setSpotLoading(false);
-    if (itemErr) {
-      alert('Um erro ocorreu, por favor tente novamente.');
-      return;
-    }
-
-    setSpotModalOpen(false);
-    setSpotSuccessOpen(true);
-    fetchData();
-  }
-
-  // --- BUSCA DE DADOS ---
-  async function fetchData() {
-    setLoading(true);
-    const today = getLocalDate();
-
-    // 1. BUSCA TAREFAS DO PRÓPRIO USUÁRIO
-    const { data: todayItems, error: err1a } = await supabase
-      .from('checklist_items')
-      .select(`
-        *,
-        template:task_templates (
-          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
-        )
-      `)
-      .eq('store_id', user.store_id)
-      .eq('scheduled_date', today);
-
-    const { data: overdueItems, error: err1b } = await supabase
-      .from('checklist_items')
-      .select(`
-        *,
-        template:task_templates (
-          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
-        )
-      `)
-      .eq('store_id', user.store_id)
-      .lt('scheduled_date', today)
-      .in('status', ['PENDING', 'RETURNED']);
-
-    // Tarefas atrasadas finalizadas hoje (scheduled < hoje, mas completed_at = hoje)
-    const { data: overdueFinishedToday } = await supabase
-      .from('checklist_items')
-      .select(`
-        *,
-        template:task_templates (
-          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
-        )
-      `)
-      .eq('store_id', user.store_id)
-      .lt('scheduled_date', today)
-      .in('status', ['COMPLETED', 'WAITING_APPROVAL'])
-      .gte('completed_at', `${today}T03:00:00Z`); // midnight São Paulo = 03:00 UTC
-
-    if (!err1a && !err1b) {
-      const allItems = [...(todayItems || []), ...(overdueItems || []), ...(overdueFinishedToday || [])];
-
-      const seen = new Map();
-      allItems.forEach(item => {
-        const key = item.template_id || `raw-${item.id}`;
-        if (!seen.has(key)) {
-          seen.set(key, item);
-        } else {
-          const existing = seen.get(key);
-          if (item.scheduled_date === today && existing.scheduled_date !== today) {
-            seen.set(key, item);
-          }
-        }
-      });
-
-      const uniqueItems = Array.from(seen.values());
-
-      const filtered = uniqueItems.filter(item => {
-        if (!item.template) return false;
-        if (item.store_id !== user.store_id) return false;
-        return !item.template.role_id || item.template.role_id === user.role_id;
-      });
-
-      const sorted = filtered.sort((a, b) => {
-        // Próprias tarefas em WAITING_APPROVAL ficam no final (já submetidas)
-        if (a.status === 'WAITING_APPROVAL' && b.status !== 'WAITING_APPROVAL') return 1;
-        if (a.status !== 'WAITING_APPROVAL' && b.status === 'WAITING_APPROVAL') return -1;
-        // Ordena pela data de vencimento: mais antiga primeiro
-        if (a.scheduled_date !== b.scheduled_date) return a.scheduled_date.localeCompare(b.scheduled_date);
-        // Dentro do mesmo dia, pelo horário mais cedo primeiro
-        const timeA = a.template?.due_time || '23:59';
-        const timeB = b.template?.due_time || '23:59';
-        return timeA.localeCompare(timeB);
-      });
-      setTasks(sorted);
-    }
-
-    // 2. BUSCA TAREFAS PARA REVISÃO (Apenas gestores)
-    if (isManager()) {
-      // Busca subordinados diretos primeiro — usados tanto na revisão quanto nas atrasadas
-      const { data: subordinates } = await supabase
-        .from('employee')
-        .select('id, full_name, role_id')
-        .eq('manager_id', user.id)
-        .eq('active', true);
-
-      // Revisão: apenas tarefas finalizadas pelos subordinados diretos deste gestor
-      if (subordinates && subordinates.length > 0) {
-        const subIds = subordinates.map(s => s.id);
-        const { data: reviewItems, error: err2 } = await supabase
-          .from('checklist_items')
-          .select(`
-              *,
-              template:task_templates (title, description, requires_photo_evidence),
-              worker:completed_by (full_name)
-          `)
-          .eq('store_id', user.store_id)
-          .eq('status', 'WAITING_APPROVAL')
-          .in('completed_by', subIds);
-
-        if (!err2) setReviewTasks(reviewItems || []);
-      } else {
-        setReviewTasks([]);
-      }
-
-      // 3. BUSCA TAREFAS ATRASADAS DOS SUBORDINADOS
-      if (subordinates && subordinates.length > 0) {
-        const subRoleIds = subordinates.map(s => String(s.role_id)).filter(Boolean);
-
-        const { data: overdueItems, error: err3a } = await supabase
-          .from('checklist_items')
-          .select(`
-              *,
-              template:task_templates (title, description, frequency_type, due_time, role_id, role:roles (name)),
-              worker:completed_by (full_name)
-          `)
-          .eq('store_id', user.store_id)
-          .lt('scheduled_date', today)
-          .in('status', ['PENDING', 'RETURNED']);
-
-        const { data: todayItems, error: err3b } = await supabase
-          .from('checklist_items')
-          .select(`
-              *,
-              template:task_templates (title, description, frequency_type, due_time, role_id, role:roles (name)),
-              worker:completed_by (full_name)
-          `)
-          .eq('store_id', user.store_id)
-          .eq('scheduled_date', today)
-          .in('status', ['PENDING', 'RETURNED']);
-
-        if (!err3a && !err3b) {
-          const nowStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-          const allItems = [...(overdueItems || []), ...(todayItems || [])];
-
-          const overdue = allItems.filter(item => {
-            if (!item.template) return false;
-            const taskRoleId = item.template.role_id;
-            if (!taskRoleId || !subRoleIds.includes(String(taskRoleId))) return false;
-            if (item.scheduled_date < today) return true;
-            if (item.status === 'RETURNED') return true;
-            const dueTime = item.template?.due_time;
-            if (!dueTime) return false;
-            return nowStr > dueTime.slice(0, 5);
-          });
-
-          overdue.sort((a, b) => {
-            if (a.status === 'RETURNED' && b.status !== 'RETURNED') return -1;
-            if (a.status !== 'RETURNED' && b.status === 'RETURNED') return 1;
-            if (a.scheduled_date !== b.scheduled_date) {
-              return a.scheduled_date.localeCompare(b.scheduled_date);
-            }
-            const tA = a.template?.due_time || '23:59';
-            const tB = b.template?.due_time || '23:59';
-            return tA.localeCompare(tB);
-          });
-          setTeamOverdueTasks(overdue);
-        } else {
-          setTeamOverdueTasks([]);
-        }
-      } else {
-        setTeamOverdueTasks([]);
-      }
-    }
-
-    setLoading(false);
-  }
-
-  // --- AÇÕES DO FUNCIONÁRIO ---
-
-  // Finalizar OK (vai direto para COMPLETED)
-  async function handleFinalizarOk(taskId, requiresPhoto) {
-    if (processingTask === taskId) return;
-    setProcessingTask(taskId);
-
-    try {
-      if (requiresPhoto) {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.capture = 'environment';
-        input.style.display = 'none';
-        document.body.appendChild(input);
-
-        return new Promise((resolve) => {
-          input.onchange = async (e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              const file = e.target.files[0];
-              await finalizarTarefaInternal(taskId, file, null, 'COMPLETED');
-            } else {
-              setProcessingTask(null);
-            }
-            document.body.removeChild(input);
-            resolve();
-          };
-          input.click();
-        });
-      }
-
-      await finalizarTarefaInternal(taskId, null, null, 'COMPLETED');
-    } catch (error) {
-      console.error("Erro ao finalizar:", error);
-      alert("Erro ao finalizar a tarefa. Tente novamente.");
-      setProcessingTask(null);
-    }
-  }
-
-  // Abre modal para Finalizar com Observação
-  function openObsModal(item) {
-    setTaskToInteract(item);
-    setObservacao("");
-    setModalObsOpen(true);
-  }
-
-  // Confirma Finalizar com Observação (vai para WAITING_APPROVAL)
-  async function confirmFinalizarComObs() {
-    if (!observacao.trim()) return alert("A observação é obrigatória.");
-    if (!taskToInteract) return;
-
-    const requiresPhoto = taskToInteract.template?.requires_photo_evidence;
-
-    setModalObsOpen(false);
-    setProcessingTask(taskToInteract.id);
-
-    try {
-      if (requiresPhoto) {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.capture = 'environment';
-        input.style.display = 'none';
-        document.body.appendChild(input);
-
-        return new Promise((resolve) => {
-          input.onchange = async (e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              const file = e.target.files[0];
-              await finalizarTarefaInternal(taskToInteract.id, file, observacao, 'WAITING_APPROVAL');
-            } else {
-              setProcessingTask(null);
-            }
-            document.body.removeChild(input);
-            resolve();
-          };
-          input.click();
-        });
-      }
-
-      await finalizarTarefaInternal(taskToInteract.id, null, observacao, 'WAITING_APPROVAL');
-    } catch (error) {
-      console.error("Erro ao finalizar com obs:", error);
-      alert("Erro ao finalizar a tarefa. Tente novamente.");
-      setProcessingTask(null);
-    }
-  }
-
-  // Função interna que salva a tarefa
-  async function finalizarTarefaInternal(taskId, photoFile, obs, status) {
-    try {
-      let evidenceImageUrl = null;
-
-      if (photoFile) {
-        const fileName = `${user.store_id}/${taskId}_${Date.now()}.jpg`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('task-evidence')
-          .upload(fileName, photoFile, { contentType: photoFile.type });
-
-        if (uploadError) {
-          throw new Error(`Erro no upload da foto: ${uploadError.message}`);
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('task-evidence')
-          .getPublicUrl(fileName);
-
-        evidenceImageUrl = urlData.publicUrl;
-      }
-
-      const updateData = {
-        status: status,
-        completed_at: new Date().toISOString(),
-        completed_by: user.id
-      };
-
-      if (evidenceImageUrl) {
-        updateData.evidence_image_url = evidenceImageUrl;
-      }
-
-      if (obs) {
-        updateData.notes = obs;
-      }
-
-      const { error } = await supabase.from('checklist_items').update(updateData).eq('id', taskId);
-
-      if (error) throw error;
-
-      await fetchData();
-    } catch (error) {
-      alert("Erro ao salvar: " + error.message);
-    } finally {
-      setProcessingTask(null);
-    }
-  }
-
-  // --- AÇÕES DO GESTOR ---
-
-  function handleManagerApprove(taskId) {
-    const task = reviewTasks.find(t => t.id === taskId) || teamOverdueTasks.find(t => t.id === taskId);
-    if (!task) return;
-    setTaskToInteract(task);
-    setModalApproveOpen(true);
-  }
-
-  async function confirmApprove() {
-    if (!taskToInteract) return;
-
-    setLoading(true);
-    const { error } = await supabase.from('checklist_items').update({
-      status: 'COMPLETED'
-    }).eq('id', taskToInteract.id);
-
-    setLoading(false);
-    setModalApproveOpen(false);
-
-    if (!error) fetchData();
-    else alert("Erro: " + error.message);
-  }
-
-  function openReturnModal(item) {
-    setTaskToInteract(item);
-    setObservacao("");
-    setModalReturnOpen(true);
-  }
-
-  async function confirmReturn() {
-    if (!observacao.trim()) return alert("Escreva uma instrução para o funcionário saber o que corrigir.");
-
-    const { error } = await supabase.from('checklist_items').update({
-      status: 'RETURNED',
-      notes: observacao
-    }).eq('id', taskToInteract.id);
-
-    if (!error) {
-      setModalReturnOpen(false);
-      fetchData();
-    } else {
-      alert("Erro ao devolver: " + error.message);
-    }
-  }
 
   // --- HELPERS ---
   function isLate(dueTime) {
@@ -527,7 +112,7 @@ export default function KioskArea({ user, onLogout }) {
         </div>
 
         {/* LISTA DE TAREFAS (A FAZER / FINALIZADAS) */}
-        {activeTab !== 'review' && activeTab !== 'team' && (
+        {activeTab !== 'team' && (
           <div className="space-y-3">
             {!loading && visibleTasks.length === 0 && !(activeTab === 'todo' && isManager() && reviewTasks.length > 0) && (
               <div className="text-center py-16 text-slate-400 bg-white rounded-xl border border-dashed border-slate-300">
@@ -647,6 +232,7 @@ export default function KioskArea({ user, onLogout }) {
                 </div>
               );
             })}
+
             {/* TAREFAS DE REVISÃO — apenas na aba "A Fazer" do gestor */}
             {activeTab === 'todo' && isManager() && reviewTasks.length > 0 && (
               <div className="space-y-4 mt-1">
@@ -717,76 +303,6 @@ export default function KioskArea({ user, onLogout }) {
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {/* ABA DE REVISÃO DO GESTOR — mantida apenas para compatibilidade, não mais acessível via tab */}
-        {activeTab === 'review' && isManager() && (
-          <div className="space-y-4">
-            {!loading && reviewTasks.length === 0 && (
-              <div className="text-center py-16 text-slate-400">
-                <UserCheck size={40} className="mx-auto mb-2 opacity-20" />
-                <p className="font-medium">Tudo revisado! Nenhuma pendência.</p>
-              </div>
-            )}
-            {reviewTasks.map(item => (
-              <div key={item.id} className="bg-white rounded-xl shadow-lg border border-amber-200 overflow-hidden">
-                <div className="bg-amber-50 px-5 py-3 border-b border-amber-100 flex justify-between items-center">
-                  <span className="text-xs font-black text-amber-600 uppercase tracking-wide">Revisão Necessária</span>
-                  <span className="text-xs font-bold text-slate-500">{new Date(item.completed_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-                <div className="p-5">
-                  <h3 className="font-bold text-lg text-slate-800 mb-1">{item.template?.title}</h3>
-                  <p className="text-sm text-slate-500 mb-4">{item.template?.description}</p>
-
-                  {/* QUEM FEZ + OBSERVAÇÃO */}
-                  <div className="flex items-center gap-3 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    <div className="bg-blue-100 p-2 rounded-full text-blue-600"><UserCheck size={20} /></div>
-                    <div className="flex-1">
-                      <span className="block font-bold text-slate-700 text-sm">{item.worker?.full_name || "Funcionário"}</span>
-                      <span className="text-xs text-slate-400">Finalizou com observação</span>
-                    </div>
-                  </div>
-
-                  {/* OBSERVAÇÃO DO FUNCIONÁRIO */}
-                  {item.notes && (
-                    <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                      <div className="font-bold flex items-center gap-2 mb-1 text-amber-700 text-xs uppercase"><FileText size={14} /> Observação:</div>
-                      <p className="text-slate-700 text-sm">"{item.notes}"</p>
-                    </div>
-                  )}
-
-                  {/* FOTO DE EVIDÊNCIA */}
-                  {item.template?.requires_photo_evidence && (
-                    item.evidence_image_url ? (
-                      <div className="mb-4">
-                        <img
-                          src={item.evidence_image_url}
-                          alt="Evidência"
-                          onClick={() => setPhotoModal(item.evidence_image_url)}
-                          className="w-full max-h-48 object-cover rounded-lg border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
-                        />
-                      </div>
-                    ) : (
-                      <div className="mb-4 p-4 bg-slate-100 rounded border border-slate-200 text-center text-slate-400 text-xs">
-                        <Camera size={24} className="mx-auto mb-1 opacity-50" />
-                        Sem foto anexada
-                      </div>
-                    )
-                  )}
-
-                  {/* AÇÕES DE GESTÃO */}
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <button onClick={() => openReturnModal(item)} className="flex-1 py-3 bg-white border-2 border-orange-300 text-orange-600 font-bold rounded-lg hover:bg-orange-50 flex items-center justify-center gap-2 transition-colors min-h-[48px] cursor-pointer">
-                      <CornerUpLeft size={18} /> Devolver
-                    </button>
-                    <button onClick={() => handleManagerApprove(item.id)} className="flex-1 py-3 bg-success text-white font-bold rounded-lg hover:brightness-110 shadow-md flex items-center justify-center gap-2 transition-colors min-h-[48px] cursor-pointer">
-                      <CheckCircle size={18} /> Aprovar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
         )}
 
@@ -882,7 +398,7 @@ export default function KioskArea({ user, onLogout }) {
       {/* MODAIS */}
 
       {/* Modal Observação (Funcionário) */}
-      {modalObsOpen && taskToInteract && (
+      {modalObsOpen && taskToFinalize && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-fade-in">
           <div className="bg-white w-full sm:max-w-sm rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl max-h-[90dvh] overflow-y-auto pb-safe">
             <div className="bg-amber-50 p-5 text-center border-b border-amber-100">
@@ -895,15 +411,15 @@ export default function KioskArea({ user, onLogout }) {
               <textarea
                 className="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-amber-400 h-32 resize-none"
                 placeholder="Ex: Faltou produto, equipamento com defeito..."
-                value={observacao}
-                onChange={e => setObservacao(e.target.value)}
+                value={obsText}
+                onChange={e => setObsText(e.target.value)}
                 autoFocus
               />
             </div>
             <div className="flex p-4 sm:p-5 gap-2 sm:gap-3 bg-slate-50 border-t border-slate-100">
               <button onClick={() => setModalObsOpen(false)} className="flex-1 py-3 font-bold text-slate-500 hover:bg-slate-200 rounded-lg transition-colors min-h-[48px] cursor-pointer">Cancelar</button>
               <button onClick={confirmFinalizarComObs} className="flex-1 py-3 font-bold text-white bg-amber-500 hover:brightness-110 rounded-lg shadow-md transition-all min-h-[48px] cursor-pointer flex items-center justify-center gap-2">
-                {taskToInteract.template?.requires_photo_evidence && <Camera size={18} />}
+                {taskToFinalize.template?.requires_photo_evidence && <Camera size={18} />}
                 Continuar
               </button>
             </div>
@@ -925,8 +441,8 @@ export default function KioskArea({ user, onLogout }) {
               <textarea
                 className="w-full border-2 border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-orange-400 h-32 resize-none"
                 placeholder="Ex: A foto ficou escura, refazer limpeza..."
-                value={observacao}
-                onChange={e => setObservacao(e.target.value)}
+                value={returnNote}
+                onChange={e => setReturnNote(e.target.value)}
                 autoFocus
               />
             </div>
@@ -939,7 +455,7 @@ export default function KioskArea({ user, onLogout }) {
       )}
 
       {/* Modal APROVAR (Gestor) */}
-      {modalApproveOpen && taskToInteract && (
+      {modalApproveOpen && taskToReview && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-fade-in">
           <div className="bg-white w-full sm:max-w-sm rounded-t-xl sm:rounded-xl overflow-hidden shadow-2xl max-h-[90dvh] overflow-y-auto pb-safe">
             <div className="bg-gradient-to-br from-primary-500 to-primary-700 p-6 text-center">
@@ -954,19 +470,19 @@ export default function KioskArea({ user, onLogout }) {
               <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 space-y-3">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Tarefa</span>
-                  <p className="font-bold text-slate-800 text-lg leading-tight">{taskToInteract.template?.title}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{taskToInteract.template?.description}</p>
+                  <p className="font-bold text-slate-800 text-lg leading-tight">{taskToReview.template?.title}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{taskToReview.template?.description}</p>
                 </div>
 
                 <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
                   <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 shrink-0 uppercase text-xs">
-                    {taskToInteract.worker?.full_name?.substring(0, 2) || 'Fn'}
+                    {taskToReview.worker?.full_name?.substring(0, 2) || 'Fn'}
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Realizada por</span>
-                    <p className="font-bold text-slate-700 text-sm">{taskToInteract.worker?.full_name}</p>
+                    <p className="font-bold text-slate-700 text-sm">{taskToReview.worker?.full_name}</p>
                     <p className="text-[10px] text-slate-400">
-                      {taskToInteract.completed_at ? new Date(taskToInteract.completed_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                      {taskToReview.completed_at ? new Date(taskToReview.completed_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
                     </p>
                   </div>
                 </div>

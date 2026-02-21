@@ -27,13 +27,24 @@ The login flow is a 2-step kiosk screen: store selection → employee selection.
 
 ### KioskArea (`src/components/KioskArea.jsx`)
 
-Single component that serves **both regular employees and managers**. Manager detection is done at runtime via `isManager()`, which checks the role name for keywords: `gerente`, `diretor`, `admin`, `gestão`, `lider`. When the user is a manager, additional tabs and queries (review queue, team overdue) are activated.
+Single component that serves **both regular employees and managers**. Logic is split into four custom hooks in `src/hooks/`:
+
+| Hook | Responsibility |
+|------|---------------|
+| `useKioskData(user)` | `fetchData`, all task states, `isManager()` |
+| `useTaskActions(user, fetchData)` | Finalize OK, obs modal, photo upload |
+| `useManagerActions(user, fetchData, reviewTasks, teamOverdueTasks, setLoading)` | Approve and return tasks |
+| `useSpotTask(user, fetchData)` | Spot task (Tarefa Imediata) creation |
+
+`isManager()` lives in `useKioskData` and is returned for use in the component. It checks the role name for keywords: `gerente`, `diretor`, `admin`, `gestão`, `lider`.
+
+**Tabs**: "A Fazer" · "Finalizadas" · "Atrasadas" (manager only). There is no separate "Revisão" tab — review tasks (WAITING_APPROVAL from subordinates) are rendered inline at the bottom of the "A Fazer" tab.
 
 > `src/components/ManagerArea.jsx` exists but is **not imported or used anywhere**. It is dead code.
 
 ### Data Fetching Pattern
 
-`fetchData()` in KioskArea fetches today's tasks AND overdue tasks separately, then deduplicates them using a `Map` keyed by `template_id`. Today's entries take priority over overdue entries with the same key.
+`fetchData()` in `useKioskData` fetches today's tasks AND overdue tasks separately, then deduplicates them using a `Map` keyed by `template_id`. Today's entries take priority over overdue entries with the same key.
 
 Tasks are filtered client-side: only items matching the user's `role_id` (or tasks with no role restriction) are shown.
 
@@ -46,7 +57,17 @@ WAITING_APPROVAL → APPROVED   (manager approves)
 WAITING_APPROVAL → RETURNED   (manager returns with feedback)
 ```
 
-The `checklist_items.completed_by` column is a FK to `employee.id`. Photo evidence is stored in Supabase Storage.
+The `checklist_items.completed_by` column is a FK to `employee.id`. Photo evidence is stored in Supabase Storage (`task-evidence` bucket).
+
+### Spot Tasks (Tarefas Imediatas)
+
+Managers can create ad-hoc tasks for immediate execution. These use `frequency_type = 'spot'` on `task_templates` with `active = false` (excluded from AdminTasks UI and never processed by the cron job). A `checklist_items` row is inserted immediately with `scheduled_date = today`, making the task appear instantly for the target role.
+
+Badge displayed: "Fazer hoje" or "Fazer hoje até as HH:MM" (violet color scheme).
+
+### Routine Linking
+
+Tasks can be linked to routines via the `routine_items` table. The FK column is **`routine_id`** (points to `routine_templates.id`) — **not** `routine_template_id`. Also has `task_template_id` and `order_index`.
 
 ### Admin Area (`src/components/AdminArea.jsx`)
 
@@ -59,9 +80,10 @@ Hub with screen-based navigation (no router). Loads global `stores` and `roles` 
 | `stores` | `id`, `name`, `shortName`, `InternalCode`, `active` |
 | `employee` | `id`, `full_name`, `store_id`, `role_id`, `manager_id`, `active` |
 | `roles` | `id`, `name`, `access_level` |
-| `task_templates` | `id`, `title`, `frequency_type`, `due_time`, `requires_photo_evidence`, `role_id` |
-| `checklist_items` | `id`, `template_id`, `store_id`, `scheduled_date`, `status`, `completed_by` |
-| `routine_templates` / `routine_items` | routine groupings |
+| `task_templates` | `id`, `title`, `frequency_type` (`daily`/`weekly`/`monthly`/`spot`), `due_time`, `requires_photo_evidence`, `role_id`, `active`, `notify_whatsapp` |
+| `checklist_items` | `id`, `template_id`, `store_id`, `scheduled_date`, `status`, `completed_by`, `completed_at`, `notes`, `evidence_image_url` |
+| `routine_templates` | `id`, `title`, `store_id`, `active` |
+| `routine_items` | `routine_id` (FK → `routine_templates`), `task_template_id`, `order_index` |
 
 A Supabase cron job generates `checklist_items` daily at 04:00 AM (America/Sao_Paulo). Monthly tasks scheduled for day 30/31 are adjusted to the last valid day of the month.
 
