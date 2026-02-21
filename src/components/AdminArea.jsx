@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import {
-  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ArrowLeft
+  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ArrowLeft, ChevronRight
 } from "lucide-react";
 
 import AdminStores from "./admin/AdminStores";
@@ -31,11 +31,29 @@ export default function AdminArea({ onExit }) {
 
   const goBack = () => setScreen('menu');
 
+  const screenLabels = {
+    lojas: 'Lojas',
+    colaboradores: 'Equipe',
+    cargos: 'Cargos',
+    tarefas: 'Tarefas',
+    rotinas: 'Rotinas',
+    relatorios: 'Relatórios',
+  };
+
   return (
     <div className="p-3 sm:p-5 md:p-8 text-slate-800 bg-slate-100 min-h-screen font-sans pb-safe">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6 sm:mb-8 border-b border-slate-300 pb-4">
-          <h1 className="text-2xl sm:text-3xl font-bold flex gap-2 items-center"><Settings size={24} /> Administração</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2 flex-wrap">
+            <Settings size={24} className="shrink-0" />
+            <span>Administração</span>
+            {screen !== 'menu' && (
+              <>
+                <ChevronRight size={20} className="text-slate-300 shrink-0" />
+                <span className="text-primary-500">{screenLabels[screen]}</span>
+              </>
+            )}
+          </h1>
           <button onClick={onExit} className="text-slate-400 hover:text-slate-700 font-semibold text-sm sm:text-base min-h-[44px] flex items-center gap-2 group transition-colors"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform sm:hidden" />← Sair</button>
         </div>
 

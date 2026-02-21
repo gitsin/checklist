@@ -3,7 +3,7 @@ import { supabase } from "../../supabaseClient";
 import {
     ArrowLeft, Store, Users, Type, CalendarClock, Clock,
     Camera, CameraOff, ChevronRight, Sparkles, CheckCircle2,
-    MessageCircle, FileText, CalendarDays, CalendarRange
+    MessageCircle, FileText, CalendarDays, CalendarRange, Layers
 } from "lucide-react";
 
 // Nomes dos dias da semana
@@ -33,13 +33,16 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
     const [instrucoes, setInstrucoes] = useState("");
     const [exigeFoto, setExigeFoto] = useState(null); // true | false
 
+    const [rotina, setRotina] = useState(null);         // { id, title } | null
+    const [rotinasLoja, setRotinasLoja] = useState([]);
+
     // Aux
     const [cargosLoja, setCargosLoja] = useState([]);
     const [salvando, setSalvando] = useState(false);
     const tituloRef = useRef(null);
     const instrucoesRef = useRef(null);
 
-    // Carrega cargos quando seleciona loja
+    // Carrega cargos e rotinas quando seleciona loja
     async function carregarCargos(lojaId) {
         const { data: emps } = await supabase
             .from("employee")
@@ -49,6 +52,14 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
         const rIds = [...new Set(emps?.map(e => e.role_id) || [])];
         const filtered = roles.filter(r => rIds.includes(r.id) && r.active);
         setCargosLoja(filtered);
+
+        const { data: rots } = await supabase
+            .from('routine_templates')
+            .select('id, title')
+            .eq('store_id', lojaId)
+            .eq('active', true)
+            .order('title');
+        setRotinasLoja(rots || []);
     }
 
     // Focus no input de texto quando entra no step
@@ -73,7 +84,8 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
     function selectLoja(l) {
         setLoja(l);
         carregarCargos(l.id);
-        setCargo(null); // Reset cargo ao trocar loja
+        setCargo(null);
+        setRotina(null);
         setAnimDir("forward");
         setStep(1);
     }
@@ -107,13 +119,19 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
     function selectFoto(val) {
         setExigeFoto(val);
         setAnimDir("forward");
-        setStep(7); // Vai direto pro resumo
+        setStep(7); // Vai para seleção de rotina
+    }
+
+    function selectRotina(r) {
+        setRotina(r);
+        setAnimDir("forward");
+        setStep(8); // Vai para o resumo
     }
 
     // --- SALVAR ---
     async function salvar() {
         setSalvando(true);
-        const { error } = await supabase.from("task_templates").insert({
+        const { data: novoTemplate, error } = await supabase.from("task_templates").insert({
             title: titulo.trim(),
             description: instrucoes.trim() || null,
             frequency_type: frequencia,
@@ -125,32 +143,45 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
             specific_day_of_month: frequencia === "monthly" ? diaMes : null,
             notify_whatsapp: false,
             active: true,
-        });
-        setSalvando(false);
+        }).select('id').single();
 
         if (error) {
-            alert("Erro ao salvar: " + error.message);
-        } else {
-            // Monta resumo e chama callback
-            const freqMap = { daily: "Diária", weekly: "Semanal", monthly: "Mensal" };
-            const diaMap = { 1: "Segunda", 2: "Terça", 3: "Quarta", 4: "Quinta", 5: "Sexta", 6: "Sábado", 7: "Domingo" };
-            onSaved({
-                titulo: titulo.trim(),
-                descricao: instrucoes.trim(),
-                frequencia: freqMap[frequencia],
-                loja: loja.name,
-                cargo: cargo.name,
-                horario: frequencia === "daily" ? hora : null,
-                foto: exigeFoto,
-                whatsapp: false,
-                diaSemana: frequencia === "weekly" ? diaMap[diaSemana] : null,
-                diaMes: frequencia === "monthly" ? diaMes : null,
+            setSalvando(false);
+            alert("Um erro ocorreu, por favor tente novamente.");
+            return;
+        }
+
+        // Vincular à rotina se selecionada
+        if (rotina && novoTemplate?.id) {
+            await supabase.from('routine_items').insert({
+                routine_id: rotina.id,
+                task_template_id: novoTemplate.id,
+                order_index: 0
             });
         }
+
+        setSalvando(false);
+
+        // Monta resumo e chama callback
+        const freqMap = { daily: "Diária", weekly: "Semanal", monthly: "Mensal" };
+        const diaMap = { 1: "Segunda", 2: "Terça", 3: "Quarta", 4: "Quinta", 5: "Sexta", 6: "Sábado", 7: "Domingo" };
+        onSaved({
+            titulo: titulo.trim(),
+            descricao: instrucoes.trim(),
+            frequencia: freqMap[frequencia],
+            loja: loja.name,
+            cargo: cargo.name,
+            horario: frequencia === "daily" ? hora : null,
+            foto: exigeFoto,
+            whatsapp: false,
+            diaSemana: frequencia === "weekly" ? diaMap[diaSemana] : null,
+            diaMes: frequencia === "monthly" ? diaMes : null,
+            rotina: rotina?.title || null,
+        });
     }
 
     // --- PROGRESS BAR ---
-    const totalSteps = 8; // 0..7
+    const totalSteps = 9; // 0..8
     const progress = ((step + 1) / totalSteps) * 100;
 
     // --- HELPERS VISUAIS ---
@@ -509,13 +540,63 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
                         )}
 
                         {/* ================================================ */}
-                        {/* STEP 7: RESUMO + SALVAR */}
+                        {/* STEP 7: ROTINA (opcional) */}
                         {/* ================================================ */}
                         {step === 7 && (
+                            <div>
+                                <p className="text-[11px] uppercase font-bold text-purple-500 tracking-wide mb-1">Passo 8</p>
+                                <h2 className="text-xl font-black text-slate-800 mb-1">Adicionar a uma rotina?</h2>
+                                <p className="text-sm text-slate-400 mb-5">
+                                    Rotinas ativas em <span className="font-bold text-slate-600">{loja?.name}</span>.{" "}
+                                    <span className="text-slate-300">(opcional)</span>
+                                </p>
+
+                                {rotinasLoja.length === 0 ? (
+                                    <div className="text-center py-8 text-slate-400">
+                                        <Layers size={32} className="mx-auto mb-2 opacity-30" />
+                                        <p className="text-sm">Nenhuma rotina ativa nesta loja.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-2.5 mb-4">
+                                        {rotinasLoja.map(r => (
+                                            <button
+                                                key={r.id}
+                                                onClick={() => selectRotina(r)}
+                                                className={`flex items-center gap-3.5 p-4 rounded-xl border-2 transition-all active:scale-[0.98] text-left min-h-[56px] ${rotina?.id === r.id
+                                                    ? "border-violet-500 bg-violet-50 shadow-md"
+                                                    : "border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/30"
+                                                }`}
+                                            >
+                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${rotina?.id === r.id ? "bg-violet-500 text-white" : "bg-slate-100 text-slate-400"}`}>
+                                                    <Layers size={20} />
+                                                </div>
+                                                <span className="font-bold text-slate-700">{r.title}</span>
+                                                {rotina?.id === r.id && (
+                                                    <CheckCircle2 size={20} className="ml-auto text-violet-500 shrink-0" />
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <button
+                                    onClick={() => { setRotina(null); setAnimDir("forward"); setStep(8); }}
+                                    className="w-full py-3.5 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-all min-h-[48px]"
+                                >
+                                    Pular — sem rotina
+                                </button>
+                            </div>
+                        )}
+
+                        {/* ================================================ */}
+                        {/* STEP 8: RESUMO + SALVAR */}
+                        {/* ================================================ */}
+                        {step === 8 && (
                             <div>
                                 <p className="text-[11px] uppercase font-bold text-purple-500 tracking-wide mb-1">Último passo</p>
                                 <h2 className="text-xl font-black text-slate-800 mb-1">Tudo certo! Confira o resumo.</h2>
                                 <p className="text-sm text-slate-400 mb-5">Revise os dados e clique em "Criar Tarefa".</p>
+
 
                                 <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
                                     {/* Título */}
@@ -578,6 +659,11 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
                                             }`}>
                                             {exigeFoto ? "📷 Exige Foto" : "Sem foto"}
                                         </span>
+                                        {rotina && (
+                                            <span className="bg-violet-100 text-violet-800 text-[10px] px-2.5 py-1 rounded-full font-bold border border-violet-200 flex items-center gap-1">
+                                                <Layers size={10} /> {rotina.title}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 

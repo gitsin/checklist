@@ -188,25 +188,33 @@ export default function KioskArea({ user, onLogout }) {
 
     // 2. BUSCA TAREFAS PARA REVISÃO (Apenas gestores)
     if (isManager()) {
-      const { data: reviewItems, error: err2 } = await supabase
-        .from('checklist_items')
-        .select(`
-            *,
-            template:task_templates (title, description, requires_photo_evidence),
-            worker:completed_by (full_name)
-        `)
-        .eq('store_id', user.store_id)
-        .eq('status', 'WAITING_APPROVAL');
-
-      if (!err2) setReviewTasks(reviewItems || []);
-
-      // 3. BUSCA TAREFAS ATRASADAS DOS SUBORDINADOS
+      // Busca subordinados diretos primeiro — usados tanto na revisão quanto nas atrasadas
       const { data: subordinates } = await supabase
         .from('employee')
         .select('id, full_name, role_id')
         .eq('manager_id', user.id)
         .eq('active', true);
 
+      // Revisão: apenas tarefas finalizadas pelos subordinados diretos deste gestor
+      if (subordinates && subordinates.length > 0) {
+        const subIds = subordinates.map(s => s.id);
+        const { data: reviewItems, error: err2 } = await supabase
+          .from('checklist_items')
+          .select(`
+              *,
+              template:task_templates (title, description, requires_photo_evidence),
+              worker:completed_by (full_name)
+          `)
+          .eq('store_id', user.store_id)
+          .eq('status', 'WAITING_APPROVAL')
+          .in('completed_by', subIds);
+
+        if (!err2) setReviewTasks(reviewItems || []);
+      } else {
+        setReviewTasks([]);
+      }
+
+      // 3. BUSCA TAREFAS ATRASADAS DOS SUBORDINADOS
       if (subordinates && subordinates.length > 0) {
         const subRoleIds = subordinates.map(s => String(s.role_id)).filter(Boolean);
 

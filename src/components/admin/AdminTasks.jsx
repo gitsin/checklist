@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
-import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle, Sparkles } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle, Sparkles, Filter, CalendarCheck } from "lucide-react";
 import TaskWizard from "./TaskWizard";
 
 export default function AdminTasks({ goBack, lojas, roles }) {
@@ -8,6 +8,9 @@ export default function AdminTasks({ goBack, lojas, roles }) {
     const [filtroLojaTarefa, setFiltroLojaTarefa] = useState("");
     const [filtroCargoTarefa, setFiltroCargoTarefa] = useState("");
     const [cargosFiltroDisponiveis, setCargosFiltroDisponiveis] = useState([]);
+    const [filtroFrequencia, setFiltroFrequencia] = useState("");
+    const [filtroExigeFoto, setFiltroExigeFoto] = useState(""); // '' | 'sim' | 'nao'
+    const [filtroDisparaAlerta, setFiltroDisparaAlerta] = useState(""); // '' | 'sim' | 'nao'
 
     const [modalNovaTarefaOpen, setModalNovaTarefaOpen] = useState(false);
     const [modalEditarTarefaOpen, setModalEditarTarefaOpen] = useState(false);
@@ -35,6 +38,11 @@ export default function AdminTasks({ goBack, lojas, roles }) {
     // Wizard
     const [wizardOpen, setWizardOpen] = useState(false);
 
+    // Rotinas disponíveis para os modais
+    const [rotinasDisponiveis, setRotinasDisponiveis] = useState([]);
+    const [novaTarefaRotina, setNovaTarefaRotina] = useState("");
+    const [editTarefaRotina, setEditTarefaRotina] = useState(""); // routine_id atual da tarefa em edição
+
     // --- Lógica de Filtros e Carregamento ---
 
     async function carregarCargosDoFiltro(lojaId) {
@@ -55,7 +63,29 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         let q = supabase.from("task_templates").select(`*, stores(name), roles(name)`).eq("store_id", filtroLojaTarefa).order("created_at", { ascending: false });
         if (filtroCargoTarefa && filtroCargoTarefa !== "") q = q.eq("role_id", filtroCargoTarefa);
         const { data, error } = await q;
-        if (error) alert(error.message); else setListaTemplates(data || []);
+        if (error) { alert(error.message); return; }
+        const freqOrder = { daily: 0, weekly: 1, monthly: 2, spot: 3 };
+        const sorted = (data || []).sort((a, b) => {
+            // 1. Ativas antes das inativas
+            if (a.active !== b.active) return a.active ? -1 : 1;
+            // 2. Ordem por frequência
+            const freqDiff = (freqOrder[a.frequency_type] ?? 99) - (freqOrder[b.frequency_type] ?? 99);
+            if (freqDiff !== 0) return freqDiff;
+            // 3. Dentro da mesma frequência
+            if (a.frequency_type === 'weekly') {
+                const dayDiff = (a.specific_day_of_week ?? 99) - (b.specific_day_of_week ?? 99);
+                if (dayDiff !== 0) return dayDiff;
+            }
+            if (a.frequency_type === 'monthly') {
+                const dayDiff = (a.specific_day_of_month ?? 99) - (b.specific_day_of_month ?? 99);
+                if (dayDiff !== 0) return dayDiff;
+            }
+            // 4. Por horário (sem horário vai para o final)
+            const timeA = a.due_time ?? '99:99';
+            const timeB = b.due_time ?? '99:99';
+            return timeA.localeCompare(timeB);
+        });
+        setListaTemplates(sorted);
     }
 
     useEffect(() => { buscarTarefas(); }, [filtroLojaTarefa, filtroCargoTarefa]);
@@ -72,6 +102,17 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         }
     }
 
+    async function carregarRotinasParaModal(lojaId) {
+        if (!lojaId) { setRotinasDisponiveis([]); return; }
+        const { data } = await supabase
+            .from('routine_templates')
+            .select('id, title')
+            .eq('store_id', lojaId)
+            .eq('active', true)
+            .order('title');
+        setRotinasDisponiveis(data || []);
+    }
+
     // --- Salvar e Editar ---
 
     async function salvarNovaTarefa() {
@@ -79,7 +120,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         if (novaTarefa.freq === 'weekly' && !novaTarefa.diaSemana) return alert("Selecione o dia da semana");
         if (novaTarefa.freq === 'monthly' && !novaTarefa.diaMes) return alert("Selecione o dia do mês");
 
-        const { error } = await supabase.from("task_templates").insert({
+        const { data: novoTemplate, error } = await supabase.from("task_templates").insert({
             title: novaTarefa.titulo, description: novaTarefa.desc, frequency_type: novaTarefa.freq,
             store_id: novaTarefa.loja, role_id: novaTarefa.cargo, due_time: novaTarefa.hora || null,
             requires_photo_evidence: novaTarefa.foto,
@@ -87,32 +128,45 @@ export default function AdminTasks({ goBack, lojas, roles }) {
             specific_day_of_month: novaTarefa.freq === 'monthly' ? parseInt(novaTarefa.diaMes) : null,
             notify_whatsapp: novaTarefa.notifyWhatsapp,
             active: true
-        });
-        if (error) {
-            alert(error.message);
-        } else {
-            // Monta resumo para exibir no modal
-            const freqMap = { daily: 'Diária', weekly: 'Semanal', monthly: 'Mensal' };
-            const mapaDiasSemana = { 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado', 7: 'Domingo' };
-            const lojaNome = lojas.find(l => l.id === novaTarefa.loja)?.name || 'N/A';
-            const cargoNome = roles.find(r => r.id === novaTarefa.cargo)?.name || 'N/A';
+        }).select('id').single();
 
-            setTarefaSalvaResumo({
-                titulo: novaTarefa.titulo,
-                descricao: novaTarefa.desc,
-                frequencia: freqMap[novaTarefa.freq] || novaTarefa.freq,
-                loja: lojaNome,
-                cargo: cargoNome,
-                horario: novaTarefa.hora || null,
-                foto: novaTarefa.foto,
-                whatsapp: novaTarefa.notifyWhatsapp,
-                diaSemana: novaTarefa.freq === 'weekly' ? mapaDiasSemana[novaTarefa.diaSemana] : null,
-                diaMes: novaTarefa.freq === 'monthly' ? novaTarefa.diaMes : null,
-            });
-            setModalNovaTarefaOpen(false);
-            setModalTarefaSalvaOpen(true);
-            buscarTarefas();
+        if (error) {
+            alert("Um erro ocorreu, por favor tente novamente.");
+            return;
         }
+
+        // Vincular à rotina se selecionada
+        if (novaTarefaRotina && novoTemplate?.id) {
+            await supabase.from('routine_items').insert({
+                routine_id: novaTarefaRotina,
+                task_template_id: novoTemplate.id,
+                order_index: 0
+            });
+        }
+
+        // Monta resumo para exibir no modal
+        const freqMap = { daily: 'Diária', weekly: 'Semanal', monthly: 'Mensal' };
+        const mapaDiasSemana = { 1: 'Segunda', 2: 'Terça', 3: 'Quarta', 4: 'Quinta', 5: 'Sexta', 6: 'Sábado', 7: 'Domingo' };
+        const lojaNome = lojas.find(l => l.id === novaTarefa.loja)?.name || 'N/A';
+        const cargoNome = roles.find(r => r.id === novaTarefa.cargo)?.name || 'N/A';
+        const rotinaNome = rotinasDisponiveis.find(r => r.id === novaTarefaRotina)?.title || null;
+
+        setTarefaSalvaResumo({
+            titulo: novaTarefa.titulo,
+            descricao: novaTarefa.desc,
+            frequencia: freqMap[novaTarefa.freq] || novaTarefa.freq,
+            loja: lojaNome,
+            cargo: cargoNome,
+            horario: novaTarefa.hora || null,
+            foto: novaTarefa.foto,
+            whatsapp: novaTarefa.notifyWhatsapp,
+            diaSemana: novaTarefa.freq === 'weekly' ? mapaDiasSemana[novaTarefa.diaSemana] : null,
+            diaMes: novaTarefa.freq === 'monthly' ? novaTarefa.diaMes : null,
+            rotina: rotinaNome,
+        });
+        setModalNovaTarefaOpen(false);
+        setModalTarefaSalvaOpen(true);
+        buscarTarefas();
     }
 
     async function salvarEdicaoTarefa() {
@@ -127,7 +181,21 @@ export default function AdminTasks({ goBack, lojas, roles }) {
             specific_day_of_month: editTarefa.frequency_type === 'monthly' ? parseInt(editTarefa.specific_day_of_month) : null,
             notify_whatsapp: editTarefa.notify_whatsapp
         }).eq("id", editTarefa.id);
-        if (error) alert(error.message); else { setModalEditarTarefaOpen(false); buscarTarefas(); }
+
+        if (error) { alert("Um erro ocorreu, por favor tente novamente."); return; }
+
+        // Atualiza vínculo com rotina: remove o existente e insere o novo (se houver)
+        await supabase.from('routine_items').delete().eq('task_template_id', editTarefa.id);
+        if (editTarefaRotina) {
+            await supabase.from('routine_items').insert({
+                routine_id: editTarefaRotina,
+                task_template_id: editTarefa.id,
+                order_index: 0
+            });
+        }
+
+        setModalEditarTarefaOpen(false);
+        buscarTarefas();
     }
 
     async function toggleStatusTarefa(task) {
@@ -175,8 +243,8 @@ export default function AdminTasks({ goBack, lojas, roles }) {
 
     // --- CSV Logic ---
     function baixarExemploCSV() {
-        const cabecalho = "titulo,descricao,frequencia,loja,cargo,horario_limite,exige_foto,dia_semana_num,dia_mes_num\n";
-        const exemplo = "Limpeza Geral,Limpar bancadas,weekly,Minha Loja,Gerente,10:00,true,1,\n";
+        const cabecalho = "titulo,descricao,frequencia,loja,cargo,horario_limite,exige_foto,dia_semana_num,dia_mes_num,rotina\n";
+        const exemplo = "Limpeza Geral,Limpar bancadas,weekly,Minha Loja,Gerente,10:00,true,1,,Abertura\n";
         const blob = new Blob([cabecalho + exemplo], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
@@ -193,15 +261,23 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         leitor.onload = async (event) => {
             const texto = event.target.result;
             const linhas = texto.split(/\r?\n/).filter(l => l.trim() !== "");
-            const dadosParaInserir = [];
             const logs = [];
             const mapaLojas = Object.fromEntries(lojas.map(l => [l.name.toLowerCase().trim(), l.id]));
             const mapaCargos = Object.fromEntries(roles.map(r => [r.name.toLowerCase().trim(), r.id]));
 
+            // Busca todas as rotinas ativas para referência
+            const { data: todasRotinas } = await supabase.from('routine_templates').select('id, title, store_id').eq('active', true);
+            const mapaRotinas = {};
+            (todasRotinas || []).forEach(rt => {
+                const key = `${rt.store_id}_${rt.title.toLowerCase().trim()}`;
+                mapaRotinas[key] = rt.id;
+            });
+
+            let importados = 0;
             for (let i = 1; i < linhas.length; i++) {
                 const col = linhas[i].split(",");
                 if (col.length < 5) continue;
-                const [titulo, desc, freq, nomeLoja, nomeCargo, hora, foto, diaSem, diaMes] = col.map(c => c?.trim());
+                const [titulo, desc, freq, nomeLoja, nomeCargo, hora, foto, diaSem, diaMes, nomeRotina] = col.map(c => c?.trim());
                 const store_id = mapaLojas[nomeLoja?.toLowerCase()];
                 const role_id = mapaCargos[nomeCargo?.toLowerCase()];
 
@@ -209,19 +285,39 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                     logs.push(`Erro linha ${i + 1}: Loja/Cargo não encontrados.`);
                     continue;
                 }
-                dadosParaInserir.push({
+
+                const { data: tpl, error: tplErr } = await supabase.from("task_templates").insert({
                     title: titulo, description: desc, frequency_type: freq || 'daily',
                     store_id, role_id, due_time: hora || null, requires_photo_evidence: foto === 'true', active: true,
                     specific_day_of_week: diaSem ? parseInt(diaSem) : null,
                     specific_day_of_month: diaMes ? parseInt(diaMes) : null
-                });
+                }).select('id').single();
+
+                if (tplErr) {
+                    logs.push(`Erro linha ${i + 1}: ${tplErr.message}`);
+                    continue;
+                }
+
+                importados++;
+
+                // Vincular à rotina se informada
+                if (nomeRotina && tpl?.id) {
+                    const routineKey = `${store_id}_${nomeRotina.toLowerCase().trim()}`;
+                    const routineId = mapaRotinas[routineKey];
+                    if (routineId) {
+                        const { error: riErr } = await supabase.from('routine_items').insert({
+                            routine_id: routineId,
+                            task_template_id: tpl.id,
+                            order_index: 0
+                        });
+                        if (riErr) logs.push(`Aviso linha ${i + 1}: tarefa importada, mas erro ao vincular rotina.`);
+                    } else {
+                        logs.push(`Aviso linha ${i + 1}: tarefa importada, rotina "${nomeRotina}" não encontrada nesta loja.`);
+                    }
+                }
             }
 
-            if (dadosParaInserir.length > 0) {
-                const { error } = await supabase.from("task_templates").insert(dadosParaInserir);
-                if (error) logs.push("Erro ao inserir: " + error.message);
-                else logs.push(`Sucesso: ${dadosParaInserir.length} importados.`);
-            }
+            if (importados > 0) logs.push(`Sucesso: ${importados} tarefa${importados !== 1 ? 's' : ''} importada${importados !== 1 ? 's' : ''}.`);
             setLogImportacao(logs);
             setImportando(false);
             buscarTarefas();
@@ -239,32 +335,81 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                     <div className="flex flex-wrap gap-2">
                         <button onClick={() => setModalImportarOpen(true)} className="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-sm hover:shadow"><FileUp size={16} /> Importar</button>
                         <button onClick={gerarRotina} disabled={gerandoRotina} className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-emerald-600 hover:to-green-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97] disabled:opacity-50"><PlayCircle size={16} /> {gerandoRotina ? '...' : 'Gerar'}</button>
-                        <button onClick={() => setWizardOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-indigo-600 hover:to-purple-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Sparkles size={16} /> Assistente</button>
-                        <button onClick={() => { setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false, notifyWhatsapp: false }); setCargosDisponiveis([]); setModalNovaTarefaOpen(true); }} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-purple-600 hover:to-violet-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Plus size={16} /> Nova</button>
+                        <button onClick={() => setWizardOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-indigo-600 hover:to-purple-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Sparkles size={16} /> Assistente de Criação de Tarefas</button>
+                        <button onClick={() => { setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false, notifyWhatsapp: false }); setCargosDisponiveis([]); setRotinasDisponiveis([]); setNovaTarefaRotina(""); setModalNovaTarefaOpen(true); }} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-purple-600 hover:to-violet-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Plus size={16} /> Criar Tarefa</button>
                     </div>
                 </div>
 
                 {/* Filtros */}
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Loja</label>
-                        <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroLojaTarefa} onChange={e => { setFiltroLojaTarefa(e.target.value); carregarCargosDoFiltro(e.target.value); }}>
-                            <option value="">Selecione a Loja...</option>
-                            {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                        </select>
+                <div className="mb-6 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                        <Filter size={14} className="text-slate-400" />
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Filtrar</span>
                     </div>
-                    <div className="flex-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Cargo</label>
-                        <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroCargoTarefa} onChange={e => setFiltroCargoTarefa(e.target.value)} disabled={!filtroLojaTarefa}>
-                            <option value="">Todos Cargos</option>
-                            {cargosFiltroDisponiveis.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Loja */}
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Loja</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm" value={filtroLojaTarefa} onChange={e => { setFiltroLojaTarefa(e.target.value); carregarCargosDoFiltro(e.target.value); }}>
+                                <option value="">Todas as lojas</option>
+                                {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                        </div>
+                        {/* Cargo */}
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Cargo</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm disabled:opacity-40" value={filtroCargoTarefa} onChange={e => setFiltroCargoTarefa(e.target.value)} disabled={!filtroLojaTarefa}>
+                                <option value="">Todos os cargos</option>
+                                {cargosFiltroDisponiveis.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                        </div>
+                        {/* Frequência */}
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Frequência</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm" value={filtroFrequencia} onChange={e => setFiltroFrequencia(e.target.value)}>
+                                <option value="">Todas</option>
+                                <option value="daily">Diária</option>
+                                <option value="weekly">Semanal</option>
+                                <option value="monthly">Mensal</option>
+                            </select>
+                        </div>
+                        {/* Exige Foto */}
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Exige Foto</label>
+                            <div className="flex gap-1.5">
+                                {[['', 'Todos'], ['sim', 'Sim'], ['nao', 'Não']].map(([val, label]) => (
+                                    <button key={val} onClick={() => setFiltroExigeFoto(val)}
+                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all min-h-[36px] ${filtroExigeFoto === val ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'}`}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Dispara Alerta */}
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Dispara Alerta</label>
+                            <div className="flex gap-1.5">
+                                {[['', 'Todos'], ['sim', 'Sim'], ['nao', 'Não']].map(([val, label]) => (
+                                    <button key={val} onClick={() => setFiltroDisparaAlerta(val)}
+                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all min-h-[36px] ${filtroDisparaAlerta === val ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'}`}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 {/* Lista de Tarefas */}
                 <div className="grid gap-3">
-                    {listaTemplates.map(t => (
+                    {listaTemplates.filter(t => {
+                        if (filtroFrequencia && t.frequency_type !== filtroFrequencia) return false;
+                        if (filtroExigeFoto === 'sim' && !t.requires_photo_evidence) return false;
+                        if (filtroExigeFoto === 'nao' && t.requires_photo_evidence) return false;
+                        if (filtroDisparaAlerta === 'sim' && !t.notify_whatsapp) return false;
+                        if (filtroDisparaAlerta === 'nao' && t.notify_whatsapp) return false;
+                        return true;
+                    }).map(t => (
                         <div key={t.id} className={`p-3 sm:p-4 rounded flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 ${t.active ? 'bg-white text-slate-800 border-l-4 border-green-500' : 'bg-slate-300 text-slate-500 border-l-4 border-slate-500'}`}>
                             <div>
                                 <div className="font-bold flex items-center gap-2">
@@ -278,7 +423,15 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={() => toggleStatusTarefa(t)}>{t.active ? <ToggleRight className="text-green-600" size={28} /> : <ToggleLeft size={28} />}</button>
-                                <button onClick={() => { setEditTarefa(t); carregarCargosParaModal(t.store_id); setModalEditarTarefaOpen(true); }} className="text-blue-600 p-2 hover:bg-blue-50 rounded-full"><Pencil size={18} /></button>
+                                <button onClick={async () => {
+                                    setEditTarefa(t);
+                                    carregarCargosParaModal(t.store_id);
+                                    carregarRotinasParaModal(t.store_id);
+                                    // Busca rotina atual vinculada à tarefa
+                                    const { data: ri } = await supabase.from('routine_items').select('routine_id').eq('task_template_id', t.id).maybeSingle();
+                                    setEditTarefaRotina(ri?.routine_id || "");
+                                    setModalEditarTarefaOpen(true);
+                                }} className="text-blue-600 p-2 hover:bg-blue-50 rounded-full"><Pencil size={18} /></button>
                             </div>
                         </div>
                     ))}
@@ -296,7 +449,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                                    <select className="border p-2 w-full rounded bg-white" onChange={e => { setNovaTarefa({ ...novaTarefa, loja: e.target.value }); carregarCargosParaModal(e.target.value) }}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                                    <select className="border p-2 w-full rounded bg-white" onChange={e => { const id = e.target.value; setNovaTarefa({ ...novaTarefa, loja: id }); carregarCargosParaModal(id); carregarRotinasParaModal(id); setNovaTarefaRotina(""); }}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
@@ -358,6 +511,16 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                 <label htmlFor="checkWhatsAppNew" className="text-sm font-bold text-green-700 flex items-center gap-1"><MessageCircle size={14} /> Notificar via WhatsApp</label>
                             </div>
 
+                            {rotinasDisponiveis.length > 0 && (
+                                <div className="mb-4">
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Rotina <span className="text-slate-300 font-normal normal-case">(opcional)</span></label>
+                                    <select className="border p-2 w-full rounded bg-white" value={novaTarefaRotina} onChange={e => setNovaTarefaRotina(e.target.value)}>
+                                        <option value="">Nenhuma rotina</option>
+                                        {rotinasDisponiveis.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                                    </select>
+                                </div>
+                            )}
+
                             <button onClick={salvarNovaTarefa} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-purple-600 hover:to-violet-700 transition-all active:scale-[0.98]">Salvar Tarefa</button>
                             <button onClick={() => setModalNovaTarefaOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                         </div>
@@ -389,7 +552,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                                    <select className="border p-2 w-full rounded bg-white" value={editTarefa.store_id} onChange={e => { setEditTarefa({ ...editTarefa, store_id: e.target.value }); carregarCargosParaModal(e.target.value) }}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select>
+                                    <select className="border p-2 w-full rounded bg-white" value={editTarefa.store_id} onChange={e => { const id = e.target.value; setEditTarefa({ ...editTarefa, store_id: id }); carregarCargosParaModal(id); carregarRotinasParaModal(id); setEditTarefaRotina(""); }}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}</select>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>
@@ -430,6 +593,17 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                 <label className="text-sm font-bold text-green-700 flex items-center gap-1"><MessageCircle size={14} /> Notificar via WhatsApp</label>
                             </div>
 
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Rotina <span className="text-slate-300 font-normal normal-case">(opcional)</span></label>
+                                <select className="border p-2 w-full rounded bg-white" value={editTarefaRotina} onChange={e => setEditTarefaRotina(e.target.value)}>
+                                    <option value="">Nenhuma rotina</option>
+                                    {rotinasDisponiveis.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                                </select>
+                                {rotinasDisponiveis.length === 0 && (
+                                    <p className="text-[10px] text-slate-400 mt-1">Selecione uma loja para ver as rotinas disponíveis.</p>
+                                )}
+                            </div>
+
                             <button onClick={salvarEdicaoTarefa} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-3 rounded-xl w-full font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-purple-600 hover:to-violet-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
                             <button onClick={() => setModalEditarTarefaOpen(false)} className="mt-2 text-slate-400 hover:text-slate-600 w-full py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                         </div>
@@ -437,74 +611,101 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                 )
             }
             {/* MODAL RESULTADO DA GERAÇÃO */}
-            {modalResultadoOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-                        {/* Header do modal */}
-                        <div className={`p-5 text-center ${resultadoGeracao.sucesso ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-red-500 to-orange-600'}`}>
-                            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
-                                {resultadoGeracao.sucesso
-                                    ? <CheckCircle2 size={32} className="text-white" />
-                                    : <AlertTriangle size={32} className="text-white" />
-                                }
+            {modalResultadoOpen && (() => {
+                const isError = !resultadoGeracao.sucesso;
+                const isEmpty = resultadoGeracao.sucesso && resultadoGeracao.total === 0;
+                const isSuccess = resultadoGeracao.sucesso && resultadoGeracao.total > 0;
+
+                return (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+
+                            {/* Header */}
+                            <div className={`p-5 text-center ${
+                                isSuccess ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                                : isEmpty  ? 'bg-gradient-to-br from-slate-100 to-slate-200'
+                                :            'bg-gradient-to-br from-red-500 to-orange-600'
+                            }`}>
+                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ${
+                                    isSuccess ? 'bg-white/20'
+                                    : isEmpty  ? 'bg-white shadow-sm border border-slate-200'
+                                    :            'bg-white/20'
+                                }`}>
+                                    {isSuccess && <CheckCircle2 size={32} className="text-white" />}
+                                    {isEmpty   && <CalendarCheck size={32} className="text-slate-400" />}
+                                    {isError   && <AlertTriangle size={32} className="text-white" />}
+                                </div>
+                                <h3 className={`text-xl font-black ${isEmpty ? 'text-slate-700' : 'text-white'}`}>
+                                    {isSuccess ? "Rotina Gerada!" : isEmpty ? "Tudo em dia!" : "Erro na Geração"}
+                                </h3>
+                                {isSuccess && (
+                                    <p className="text-white/80 text-sm mt-1">
+                                        {resultadoGeracao.total} tarefa{resultadoGeracao.total !== 1 ? 's' : ''} gerada{resultadoGeracao.total !== 1 ? 's' : ''} para hoje
+                                    </p>
+                                )}
+                                {isEmpty && (
+                                    <p className="text-slate-500 text-sm mt-1">
+                                        Todas as tarefas de hoje já estão geradas.
+                                    </p>
+                                )}
                             </div>
-                            <h3 className="text-xl font-black text-white">
-                                {resultadoGeracao.sucesso ? "Rotina Gerada!" : "Erro na Geração"}
-                            </h3>
-                            {resultadoGeracao.sucesso && (
-                                <p className="text-white/80 text-sm mt-1">
-                                    {resultadoGeracao.total} tarefa{resultadoGeracao.total !== 1 ? 's' : ''} no total para hoje
-                                </p>
-                            )}
-                        </div>
 
-                        {/* Conteúdo */}
-                        <div className="p-5">
-                            {resultadoGeracao.sucesso && resultadoGeracao.porLoja.length > 0 ? (
-                                <>
-                                    <p className="text-xs font-bold text-slate-500 uppercase mb-3">Tarefas por Loja</p>
-                                    <div className="space-y-2 max-h-[40vh] overflow-y-auto">
-                                        {resultadoGeracao.porLoja.map((loja, idx) => (
-                                            <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-lg bg-teal-100 flex items-center justify-center">
-                                                        <Store size={16} className="text-teal-600" />
+                            {/* Conteúdo */}
+                            <div className="p-5">
+                                {isSuccess && resultadoGeracao.porLoja.length > 0 && (
+                                    <>
+                                        <p className="text-xs font-bold text-slate-500 uppercase mb-3">Tarefas por Loja</p>
+                                        <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                                            {resultadoGeracao.porLoja.map((loja, idx) => (
+                                                <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-9 h-9 rounded-lg bg-teal-100 flex items-center justify-center">
+                                                            <Store size={16} className="text-teal-600" />
+                                                        </div>
+                                                        <span className="font-bold text-slate-700 text-sm">{loja.nome}</span>
                                                     </div>
-                                                    <span className="font-bold text-slate-700 text-sm">{loja.nome}</span>
+                                                    <span className="bg-teal-600 text-white text-xs font-black px-2.5 py-1 rounded-full">
+                                                        {loja.count} tarefa{loja.count !== 1 ? 's' : ''}
+                                                    </span>
                                                 </div>
-                                                <span className="bg-teal-600 text-white text-xs font-black px-2.5 py-1 rounded-full">
-                                                    {loja.count} tarefa{loja.count !== 1 ? 's' : ''}
-                                                </span>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                                {isEmpty && (
+                                    <div className="flex flex-col items-center text-center py-3 gap-2">
+                                        <p className="text-slate-600 text-sm">
+                                            Nenhuma tarefa nova precisa ser criada agora. O sistema só gera tarefas que ainda não existem para o dia de hoje.
+                                        </p>
+                                        <p className="text-xs text-slate-400 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mt-1">
+                                            Caso precise criar uma tarefa urgente, use o botão <strong>"Criar Tarefa"</strong>.
+                                        </p>
                                     </div>
-                                </>
-                            ) : !resultadoGeracao.sucesso ? (
-                                <p className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
-                                    {resultadoGeracao.mensagem}
-                                </p>
-                            ) : (
-                                <p className="text-slate-500 text-sm text-center py-4">
-                                    Nenhuma tarefa foi gerada para hoje.
-                                </p>
-                            )}
-                        </div>
+                                )}
+                                {isError && (
+                                    <p className="text-red-600 text-sm bg-red-50 p-3 rounded-lg border border-red-100">
+                                        {resultadoGeracao.mensagem}
+                                    </p>
+                                )}
+                            </div>
 
-                        {/* Footer */}
-                        <div className="px-5 pb-5">
-                            <button
-                                onClick={() => setModalResultadoOpen(false)}
-                                className={`w-full py-3 rounded-xl font-bold text-white min-h-[48px] transition-all active:scale-95 ${resultadoGeracao.sucesso
-                                    ? 'bg-teal-600 hover:bg-teal-700'
-                                    : 'bg-slate-600 hover:bg-slate-700'
+                            {/* Footer */}
+                            <div className="px-5 pb-5">
+                                <button
+                                    onClick={() => setModalResultadoOpen(false)}
+                                    className={`w-full py-3 rounded-xl font-bold min-h-[48px] transition-all active:scale-95 ${
+                                        isSuccess ? 'bg-teal-600 hover:bg-teal-700 text-white'
+                                        : isEmpty  ? 'bg-slate-800 hover:bg-slate-900 text-white'
+                                        :            'bg-slate-600 hover:bg-slate-700 text-white'
                                     }`}
-                            >
-                                Fechar
-                            </button>
+                                >
+                                    Entendido
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             {/* MODAL TAREFA SALVA COM SUCESSO */}
             {modalTarefaSalvaOpen && tarefaSalvaResumo && (
@@ -576,6 +777,11 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                     {tarefaSalvaResumo.whatsapp && (
                                         <span className="bg-green-100 text-green-800 text-[10px] px-2 py-0.5 rounded border border-green-200 font-bold uppercase flex items-center gap-0.5">
                                             <MessageCircle size={10} /> WhatsApp
+                                        </span>
+                                    )}
+                                    {tarefaSalvaResumo.rotina && (
+                                        <span className="bg-violet-100 text-violet-800 text-[10px] px-2 py-0.5 rounded border border-violet-200 font-bold uppercase flex items-center gap-0.5">
+                                            📋 {tarefaSalvaResumo.rotina}
                                         </span>
                                     )}
                                 </div>
