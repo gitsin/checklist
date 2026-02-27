@@ -23,7 +23,7 @@ export default function AdminArea({ onExit }) {
   async function buscarDadosGlobais() {
     setLoading(true);
     const { data: l } = await supabase.from("stores").select("*").order('name');
-    const { data: r } = await supabase.from("roles").select("*").order('access_level');
+    const { data: r } = await supabase.from("roles").select("*").order('name');
     setLojas(l || []);
     setRoles(r || []);
     setLoading(false);
