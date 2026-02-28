@@ -18,8 +18,13 @@ export default function AdminRoutines({ goBack, lojas }) {
 
     // Itens
     const [tarefasParaRotina, setTarefasParaRotina] = useState([]);
-    const [itensSelecionados, setItensSelecionados] = useState([]);
-    const [tarefaSelecionadaId, setTarefaSelecionadaId] = useState("");
+    const [itensSelecionados, setItensSelecionados] = useState([]); // [{ task_template_id, title, role_name, frequency_type }]
+
+    // Seleção Múltipla via Checkbox
+    const [tarefasMarcadas, setTarefasMarcadas] = useState([]); // Array de IDs marcadas no momento
+
+    const [modalSucessoOpen, setModalSucessoOpen] = useState(false);
+    const [sucessoResumo, setSucessoResumo] = useState({ qtd: 0, titulos: [] });
 
     // --- BUSCAS ---
     async function buscarRotinas() {
@@ -31,18 +36,32 @@ export default function AdminRoutines({ goBack, lojas }) {
 
     async function carregarTarefasParaRotina(storeId) {
         if (!storeId) { setTarefasParaRotina([]); return; }
-        const { data } = await supabase.from('task_templates').select(`id, title, role:roles(name)`).eq('store_id', storeId).eq('active', true).order('title');
+        const { data } = await supabase.from('task_templates').select(`id, title, frequency_type, role:roles(name)`).eq('store_id', storeId).eq('active', true).order('title');
         setTarefasParaRotina(data || []);
     }
 
     // --- AÇÕES ---
-    function adicionarItemNaRotina() {
-        if (!tarefaSelecionadaId) return;
-        const task = tarefasParaRotina.find(t => t.id === tarefaSelecionadaId);
-        if (!task) return;
-        if (itensSelecionados.some(i => i.task_template_id === task.id)) return;
-        setItensSelecionados([...itensSelecionados, { task_template_id: task.id, title: task.title, role_name: task.role?.name }]);
-        setTarefaSelecionadaId("");
+    function alternarMarcacaoTarefa(taskId) {
+        if (tarefasMarcadas.includes(taskId)) {
+            setTarefasMarcadas(tarefasMarcadas.filter(id => id !== taskId));
+        } else {
+            setTarefasMarcadas([...tarefasMarcadas, taskId]);
+        }
+    }
+
+    function adicionarItensMarcados() {
+        if (tarefasMarcadas.length === 0) return;
+
+        const novasTarefas = tarefasParaRotina.filter(t => tarefasMarcadas.includes(t.id));
+        const novasFormatadas = novasTarefas.map(t => ({
+            task_template_id: t.id,
+            title: t.title,
+            role_name: t.role?.name,
+            frequency_type: t.frequency_type
+        }));
+
+        setItensSelecionados([...itensSelecionados, ...novasFormatadas]);
+        setTarefasMarcadas([]); // Limpa a seleção
     }
 
     function removerItemDaRotina(index) {
@@ -63,9 +82,15 @@ export default function AdminRoutines({ goBack, lojas }) {
             const itensPayload = itensSelecionados.map((item, idx) => ({ routine_id: rotinaCriada.id, task_template_id: item.task_template_id, order_index: idx }));
             await supabase.from('routine_items').insert(itensPayload);
         }
-        setModalNovaRotinaOpen(false); buscarRotinas();
+
+        setModalNovaRotinaOpen(false);
+        buscarRotinas();
+        setSucessoResumo({ qtd: itensSelecionados.length, titulos: itensSelecionados.map(i => i.title.length > 40 ? i.title.substring(0, 40) + '...' : i.title) });
+        setModalSucessoOpen(true);
+
         setNovaRotina({ store_id: "", title: "", description: "", start_time: "", deadline_time: "", icon: "sun", notify_whatsapp: false });
         setItensSelecionados([]);
+        setTarefasMarcadas([]);
     }
 
     async function toggleStatusRotina(rotina) {
@@ -76,8 +101,9 @@ export default function AdminRoutines({ goBack, lojas }) {
     // --- ABRIR MODAIS ---
     async function abrirEdicaoRotina(rotina) {
         setEditRotina(rotina);
-        const { data: itens } = await supabase.from('routine_items').select('*, task:task_templates(title, role:roles(name))').eq('routine_id', rotina.id).order('order_index');
-        const itensFormatados = itens.map(i => ({ task_template_id: i.task_template_id, title: i.task?.title, role_name: i.task?.role?.name }));
+        setTarefasMarcadas([]);
+        const { data: itens } = await supabase.from('routine_items').select('*, task:task_templates(title, frequency_type, role:roles(name))').eq('routine_id', rotina.id).order('order_index');
+        const itensFormatados = itens.map(i => ({ task_template_id: i.task_template_id, title: i.task?.title, role_name: i.task?.role?.name, frequency_type: i.task?.frequency_type }));
         setItensSelecionados(itensFormatados);
         await carregarTarefasParaRotina(rotina.store_id);
         setModalEditarRotinaOpen(true);
@@ -92,11 +118,18 @@ export default function AdminRoutines({ goBack, lojas }) {
         if (errHeader) return alert(errHeader.message);
 
         await supabase.from('routine_items').delete().eq('routine_id', editRotina.id);
+
+        let qtdAdicionados = 0;
         if (itensSelecionados.length > 0) {
             const itensPayload = itensSelecionados.map((item, idx) => ({ routine_id: editRotina.id, task_template_id: item.task_template_id, order_index: idx }));
             await supabase.from('routine_items').insert(itensPayload);
+            qtdAdicionados = itensSelecionados.length;
         }
-        setModalEditarRotinaOpen(false); buscarRotinas();
+        setModalEditarRotinaOpen(false);
+        buscarRotinas();
+        setSucessoResumo({ qtd: qtdAdicionados, titulos: itensSelecionados.map(i => i.title.length > 40 ? i.title.substring(0, 40) + '...' : i.title) });
+        setModalSucessoOpen(true);
+        setTarefasMarcadas([]);
     }
 
     // --- VISUALIZAR (NOVO) ---
@@ -106,6 +139,11 @@ export default function AdminRoutines({ goBack, lojas }) {
         setVisualizarRotina({ ...rotina, itens: itens || [] });
         setModalVisualizarOpen(true);
     }
+
+    const freqMap = { daily: 'Diária', weekly: 'Semanal', monthly: 'Mensal' };
+
+    // Filtro de tarefas não incluídas
+    const tarefasDisponiveis = tarefasParaRotina.filter(t => !itensSelecionados.some(i => i.task_template_id === t.id));
 
     return (
         <>
@@ -172,10 +210,26 @@ export default function AdminRoutines({ goBack, lojas }) {
                             <div><label className="text-xs font-bold">Início</label><input type="time" className="border p-2 w-full rounded" value={novaRotina.start_time} onChange={e => setNovaRotina({ ...novaRotina, start_time: e.target.value })} /></div>
                             <div><label className="text-xs font-bold">Fim</label><input type="time" className="border p-2 w-full rounded" value={novaRotina.deadline_time} onChange={e => setNovaRotina({ ...novaRotina, deadline_time: e.target.value })} /></div>
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                            <select className="border p-2 flex-1 rounded" value={tarefaSelecionadaId} onChange={e => setTarefaSelecionadaId(e.target.value)} disabled={!novaRotina.store_id}><option value="">Selecionar Tarefa...</option>{tarefasParaRotina.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select>
-                            <button onClick={adicionarItemNaRotina} className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl font-bold min-h-[44px] w-full sm:w-auto flex items-center justify-center shadow-md hover:shadow-lg transition-all active:scale-[0.97]" disabled={!tarefaSelecionadaId}><Plus size={16} /></button>
+                        <div className="flex flex-col gap-2 mb-4 bg-slate-50 border border-slate-200 p-3 rounded-lg max-h-48 overflow-y-auto">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Tarefas Disponíveis</span>
+                            {tarefasDisponiveis.length === 0 ? (
+                                <span className="text-sm text-slate-400 p-2 text-center">Nenhuma tarefa disponível.</span>
+                            ) : (
+                                tarefasDisponiveis.map(t => (
+                                    <label key={t.id} className="flex items-center gap-3 p-2 hover:bg-white rounded border border-transparent hover:border-slate-200 cursor-pointer transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 accent-amber-500" checked={tarefasMarcadas.includes(t.id)} onChange={() => alternarMarcacaoTarefa(t.id)} />
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-bold text-slate-700">{t.title.length > 40 ? t.title.substring(0, 40) + '...' : t.title}</span>
+                                            <div className="flex gap-2 mt-0.5">
+                                                <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{t.role?.name || 'Sem Cargo'}</span>
+                                                <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">{freqMap[t.frequency_type] || t.frequency_type}</span>
+                                            </div>
+                                        </div>
+                                    </label>
+                                ))
+                            )}
                         </div>
+                        <button onClick={adicionarItensMarcados} className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-3 rounded-xl font-bold min-h-[44px] w-full mb-4 shadow-sm hover:shadow transition-all active:scale-[0.98]" disabled={tarefasMarcadas.length === 0}>Adicionar {tarefasMarcadas.length > 0 ? `(${tarefasMarcadas.length}) ` : ''}Selecionadas à Rotina</button>
                         <ul className="mb-4 space-y-2">{itensSelecionados.map((item, idx) => <li key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded border"><span className="text-sm">{idx + 1}. {item.title}</span> <button onClick={() => removerItemDaRotina(idx)} className="text-red-500"><Trash2 size={16} /></button></li>)}</ul>
                         <div className="flex items-center gap-2 mb-6">
                             <input type="checkbox" id="checkWhatsAppRotina" className="w-5 h-5 accent-green-600" checked={novaRotina.notify_whatsapp} onChange={e => setNovaRotina({ ...novaRotina, notify_whatsapp: e.target.checked })} />
@@ -198,10 +252,26 @@ export default function AdminRoutines({ goBack, lojas }) {
                             <input type="time" className="border p-2 w-full rounded" value={editRotina.start_time || ''} onChange={e => setEditRotina({ ...editRotina, start_time: e.target.value })} />
                             <input type="time" className="border p-2 w-full rounded" value={editRotina.deadline_time || ''} onChange={e => setEditRotina({ ...editRotina, deadline_time: e.target.value })} />
                         </div>
-                        <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                            <select className="border p-2 flex-1 rounded" value={tarefaSelecionadaId} onChange={e => setTarefaSelecionadaId(e.target.value)}><option value="">Adicionar Tarefa...</option>{tarefasParaRotina.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}</select>
-                            <button onClick={adicionarItemNaRotina} className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl font-bold min-h-[44px] w-full sm:w-auto flex items-center justify-center shadow-md hover:shadow-lg transition-all active:scale-[0.97]"><Plus size={16} /></button>
+                        <div className="flex flex-col gap-2 mb-4 bg-slate-50 border border-slate-200 p-3 rounded-lg max-h-48 overflow-y-auto">
+                            <span className="text-xs font-bold text-slate-500 uppercase">Tarefas Disponíveis</span>
+                            {tarefasDisponiveis.length === 0 ? (
+                                <span className="text-sm text-slate-400 p-2 text-center">Nenhuma tarefa disponível.</span>
+                            ) : (
+                                tarefasDisponiveis.map(t => (
+                                    <label key={t.id} className="flex items-center gap-3 p-2 hover:bg-white rounded border border-transparent hover:border-slate-200 cursor-pointer transition-colors">
+                                        <input type="checkbox" className="w-4 h-4 accent-amber-500" checked={tarefasMarcadas.includes(t.id)} onChange={() => alternarMarcacaoTarefa(t.id)} />
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-bold text-slate-700">{t.title.length > 40 ? t.title.substring(0, 40) + '...' : t.title}</span>
+                                            <div className="flex gap-2 mt-0.5">
+                                                <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{t.role?.name || 'Sem Cargo'}</span>
+                                                <span className="text-[10px] uppercase font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">{freqMap[t.frequency_type] || t.frequency_type}</span>
+                                            </div>
+                                        </div>
+                                    </label>
+                                ))
+                            )}
                         </div>
+                        <button onClick={adicionarItensMarcados} className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-3 rounded-xl font-bold min-h-[44px] w-full mb-4 shadow-sm hover:shadow transition-all active:scale-[0.98]" disabled={tarefasMarcadas.length === 0}>Adicionar {tarefasMarcadas.length > 0 ? `(${tarefasMarcadas.length}) ` : ''}Selecionadas à Rotina</button>
                         <ul className="mb-4 space-y-2">{itensSelecionados.map((item, idx) => <li key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded border"><span className="text-sm">{idx + 1}. {item.title}</span> <button onClick={() => removerItemDaRotina(idx)} className="text-red-500"><Trash2 size={16} /></button></li>)}</ul>
                         <div className="flex items-center gap-2 mb-6">
                             <input type="checkbox" className="w-5 h-5 accent-green-600" checked={editRotina.notify_whatsapp || false} onChange={e => setEditRotina({ ...editRotina, notify_whatsapp: e.target.checked })} />
@@ -252,6 +322,51 @@ export default function AdminRoutines({ goBack, lojas }) {
 
                         <div className="p-4 border-t bg-slate-50 rounded-b-xl flex justify-end pb-safe">
                             <button onClick={() => setModalVisualizarOpen(false)} className="px-6 py-3 bg-gradient-to-r from-slate-200 to-slate-300 hover:from-slate-300 hover:to-slate-400 text-slate-700 font-bold rounded-xl min-h-[48px] shadow-sm hover:shadow transition-all active:scale-[0.98]">Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL SUCESSO AO SALVAR */}
+            {modalSucessoOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden transform transition-all">
+                        {/* Header */}
+                        <div className="p-6 text-center bg-gradient-to-br from-amber-500 to-orange-600">
+                            <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4 shadow-inner">
+                                <CheckSquare size={36} className="text-white" />
+                            </div>
+                            <h3 className="text-2xl font-black text-white tracking-tight">Rotina Salva!</h3>
+                            <p className="text-white/80 text-sm mt-1 font-medium">As alterações foram registradas com sucesso.</p>
+                        </div>
+
+                        {/* Resumo */}
+                        <div className="p-6">
+                            <div className="bg-amber-50 rounded-xl border border-amber-100 p-5 shadow-sm text-center">
+                                <div className="text-3xl font-black text-amber-600 mb-1">{sucessoResumo.qtd}</div>
+                                <div className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-4">Tarefas na Rotina</div>
+
+                                {sucessoResumo.titulos.length > 0 && (
+                                    <div className="space-y-1 mt-4 border-t border-amber-200/50 pt-4 text-left max-h-32 overflow-y-auto">
+                                        {sucessoResumo.titulos.map((t, i) => (
+                                            <div key={i} className="text-xs font-bold text-slate-600 flex gap-2 items-start py-1">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1 shrink-0"></div>
+                                                <span>{t}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 pb-6 pt-2 bg-white">
+                            <button
+                                onClick={() => setModalSucessoOpen(false)}
+                                className="w-full py-3.5 flex items-center justify-center text-center rounded-xl font-bold text-white shadow-lg shadow-orange-500/30 transition-all hover:scale-[1.02] active:scale-95 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+                            >
+                                Fechar
+                            </button>
                         </div>
                     </div>
                 </div>

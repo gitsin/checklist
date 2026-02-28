@@ -8,6 +8,8 @@ export default function AdminTasks({ goBack, lojas, roles }) {
     const [filtroLojaTarefa, setFiltroLojaTarefa] = useState("");
     const [filtroCargoTarefa, setFiltroCargoTarefa] = useState("");
     const [cargosFiltroDisponiveis, setCargosFiltroDisponiveis] = useState([]);
+    const [filtroRotina, setFiltroRotina] = useState("");
+    const [rotinasFiltroDisponiveis, setRotinasFiltroDisponiveis] = useState([]);
     const [filtroFrequencia, setFiltroFrequencia] = useState("");
     const [filtroExigeFoto, setFiltroExigeFoto] = useState(""); // '' | 'sim' | 'nao'
     const [filtroDisparaAlerta, setFiltroDisparaAlerta] = useState(""); // '' | 'sim' | 'nao'
@@ -45,9 +47,16 @@ export default function AdminTasks({ goBack, lojas, roles }) {
 
     // --- Lógica de Filtros e Carregamento ---
 
-    async function carregarCargosDoFiltro(lojaId) {
+    async function carregarFiltrosSecundarios(lojaId) {
         setFiltroCargoTarefa("");
-        if (!lojaId) { setCargosFiltroDisponiveis([]); return; }
+        setFiltroRotina("");
+        if (!lojaId) {
+            setCargosFiltroDisponiveis([]);
+            setRotinasFiltroDisponiveis([]);
+            return;
+        }
+
+        // Cargos
         const { data: emps } = await supabase.from("employee").select("role_id").eq("store_id", lojaId).eq("active", true);
         const rIds = [...new Set(emps?.map(e => e.role_id) || [])];
         if (rIds.length > 0) {
@@ -56,11 +65,15 @@ export default function AdminTasks({ goBack, lojas, roles }) {
         } else {
             setCargosFiltroDisponiveis([]);
         }
+
+        // Rotinas
+        const { data: rots } = await supabase.from('routine_templates').select('id, title').eq('store_id', lojaId).eq('active', true).order('title');
+        setRotinasFiltroDisponiveis(rots || []);
     }
 
     async function buscarTarefas() {
         if (!filtroLojaTarefa) { setListaTemplates([]); return; }
-        let q = supabase.from("task_templates").select(`*, stores(name), roles(name)`).eq("store_id", filtroLojaTarefa).order("created_at", { ascending: false });
+        let q = supabase.from("task_templates").select(`*, stores(name), roles(name), routine_items(routine_templates(id, title))`).eq("store_id", filtroLojaTarefa).order("created_at", { ascending: false });
         if (filtroCargoTarefa && filtroCargoTarefa !== "") q = q.eq("role_id", filtroCargoTarefa);
         const { data, error } = await q;
         if (error) { alert(error.message); return; }
@@ -262,27 +275,56 @@ export default function AdminTasks({ goBack, lojas, roles }) {
             const texto = event.target.result;
             const linhas = texto.split(/\r?\n/).filter(l => l.trim() !== "");
             const logs = [];
-            const mapaLojas = Object.fromEntries(lojas.map(l => [l.name.toLowerCase().trim(), l.id]));
-            const mapaCargos = Object.fromEntries(roles.map(r => [r.name.toLowerCase().trim(), r.id]));
+            const normalizeStr = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+            const mapaLojas = Object.fromEntries(lojas.map(l => [normalizeStr(l.name), l.id]));
+            const mapaCargos = Object.fromEntries(roles.map(r => [normalizeStr(r.name), r.id]));
 
             // Busca todas as rotinas ativas para referência
             const { data: todasRotinas } = await supabase.from('routine_templates').select('id, title, store_id').eq('active', true);
             const mapaRotinas = {};
             (todasRotinas || []).forEach(rt => {
-                const key = `${rt.store_id}_${rt.title.toLowerCase().trim()}`;
+                const key = `${rt.store_id}_${normalizeStr(rt.title)}`;
                 mapaRotinas[key] = rt.id;
             });
 
+            // Detect separator (CSV exported from Excel sometimes uses ;)
+            const cabecalho = linhas[0];
+            const separador = cabecalho.includes(";") ? ";" : ",";
+
+            // Custom CSV line parser to handle quotes
+            const parseCSVLine = (text, sep) => {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                for (let i = 0; i < text.length; i++) {
+                    const char = text[i];
+                    if (char === '"' && text[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === sep && !inQuotes) {
+                        result.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                result.push(current.trim());
+                return result;
+            };
+
             let importados = 0;
             for (let i = 1; i < linhas.length; i++) {
-                const col = linhas[i].split(",");
+                const col = parseCSVLine(linhas[i], separador);
                 if (col.length < 5) continue;
                 const [titulo, desc, freq, nomeLoja, nomeCargo, hora, foto, diaSem, diaMes, nomeRotina] = col.map(c => c?.trim());
-                const store_id = mapaLojas[nomeLoja?.toLowerCase()];
-                const role_id = mapaCargos[nomeCargo?.toLowerCase()];
+                const store_id = mapaLojas[normalizeStr(nomeLoja)];
+                const role_id = mapaCargos[normalizeStr(nomeCargo)];
 
                 if (!store_id || !role_id) {
-                    logs.push(`Erro linha ${i + 1}: Loja/Cargo não encontrados.`);
+                    logs.push(`Erro linha ${i + 1}: Loja "${nomeLoja || '?'}" ou Cargo "${nomeCargo || '?'}" não encontrados.`);
                     continue;
                 }
 
@@ -302,7 +344,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
 
                 // Vincular à rotina se informada
                 if (nomeRotina && tpl?.id) {
-                    const routineKey = `${store_id}_${nomeRotina.toLowerCase().trim()}`;
+                    const routineKey = `${store_id}_${normalizeStr(nomeRotina)}`;
                     const routineId = mapaRotinas[routineKey];
                     if (routineId) {
                         const { error: riErr } = await supabase.from('routine_items').insert({
@@ -350,7 +392,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                         {/* Loja */}
                         <div>
                             <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Loja</label>
-                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm" value={filtroLojaTarefa} onChange={e => { setFiltroLojaTarefa(e.target.value); carregarCargosDoFiltro(e.target.value); }}>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm" value={filtroLojaTarefa} onChange={e => { setFiltroLojaTarefa(e.target.value); carregarFiltrosSecundarios(e.target.value); }}>
                                 <option value="">Todas as lojas</option>
                                 {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                             </select>
@@ -361,6 +403,14 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                             <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm disabled:opacity-40" value={filtroCargoTarefa} onChange={e => setFiltroCargoTarefa(e.target.value)} disabled={!filtroLojaTarefa}>
                                 <option value="">Todos os cargos</option>
                                 {cargosFiltroDisponiveis.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                        </div>
+                        {/* Rotina */}
+                        <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block">Rotina</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors text-sm disabled:opacity-40" value={filtroRotina} onChange={e => setFiltroRotina(e.target.value)} disabled={!filtroLojaTarefa}>
+                                <option value="">Todas</option>
+                                {rotinasFiltroDisponiveis.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
                             </select>
                         </div>
                         {/* Frequência */}
@@ -408,6 +458,12 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                         if (filtroExigeFoto === 'nao' && t.requires_photo_evidence) return false;
                         if (filtroDisparaAlerta === 'sim' && !t.notify_whatsapp) return false;
                         if (filtroDisparaAlerta === 'nao' && t.notify_whatsapp) return false;
+
+                        if (filtroRotina) {
+                            const hasRoutine = t.routine_items?.some(ri => ri.routine_templates?.id === filtroRotina);
+                            if (!hasRoutine) return false;
+                        }
+
                         return true;
                     }).map(t => (
                         <div key={t.id} className={`p-3 sm:p-4 rounded flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 ${t.active ? 'bg-white text-slate-800 border-l-4 border-green-500' : 'bg-slate-300 text-slate-500 border-l-4 border-slate-500'}`}>
@@ -419,9 +475,22 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                                     {t.frequency_type === 'monthly' && <span className="bg-pink-100 text-pink-800 text-[9px] px-1 rounded border border-pink-300 font-bold uppercase">Dia {t.specific_day_of_month}</span>}
                                 </div>
                                 <div className="text-xs text-slate-500">{t.description}</div>
-                                <div className="text-[10px] uppercase font-bold text-slate-400 mt-1">{t.roles?.name} {t.requires_photo_evidence && '• 📷 Exige Foto'}{t.notify_whatsapp && <span className="ml-1 inline-flex items-center gap-0.5 text-green-600"><MessageCircle size={10} /> WhatsApp</span>}</div>
+                                <div className="text-[10px] uppercase font-bold text-slate-400 mt-1">
+                                    {t.roles?.name}
+                                    {t.requires_photo_evidence && ' • 📷 Exige Foto'}
+                                    {t.notify_whatsapp && <span className="ml-1 inline-flex items-center gap-0.5 text-green-600"><MessageCircle size={10} /> WhatsApp</span>}
+                                </div>
+                                {t.routine_items?.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                        {t.routine_items.map((ri, idx) => ri.routine_templates && (
+                                            <span key={idx} className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded border border-amber-200 font-bold uppercase flex items-center gap-1">
+                                                📋 {ri.routine_templates.title}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 items-center sm:items-start pt-1 sm:pt-0">
                                 <button onClick={() => toggleStatusTarefa(t)}>{t.active ? <ToggleRight className="text-green-600" size={28} /> : <ToggleLeft size={28} />}</button>
                                 <button onClick={async () => {
                                     setEditTarefa(t);
@@ -621,19 +690,17 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                         <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
 
                             {/* Header */}
-                            <div className={`p-5 text-center ${
-                                isSuccess ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
-                                : isEmpty  ? 'bg-gradient-to-br from-slate-100 to-slate-200'
-                                :            'bg-gradient-to-br from-red-500 to-orange-600'
-                            }`}>
-                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ${
-                                    isSuccess ? 'bg-white/20'
-                                    : isEmpty  ? 'bg-white shadow-sm border border-slate-200'
-                                    :            'bg-white/20'
+                            <div className={`p-5 text-center ${isSuccess ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                                : isEmpty ? 'bg-gradient-to-br from-slate-100 to-slate-200'
+                                    : 'bg-gradient-to-br from-red-500 to-orange-600'
                                 }`}>
+                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3 ${isSuccess ? 'bg-white/20'
+                                    : isEmpty ? 'bg-white shadow-sm border border-slate-200'
+                                        : 'bg-white/20'
+                                    }`}>
                                     {isSuccess && <CheckCircle2 size={32} className="text-white" />}
-                                    {isEmpty   && <CalendarCheck size={32} className="text-slate-400" />}
-                                    {isError   && <AlertTriangle size={32} className="text-white" />}
+                                    {isEmpty && <CalendarCheck size={32} className="text-slate-400" />}
+                                    {isError && <AlertTriangle size={32} className="text-white" />}
                                 </div>
                                 <h3 className={`text-xl font-black ${isEmpty ? 'text-slate-700' : 'text-white'}`}>
                                     {isSuccess ? "Rotina Gerada!" : isEmpty ? "Tudo em dia!" : "Erro na Geração"}
@@ -693,11 +760,10 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                             <div className="px-5 pb-5">
                                 <button
                                     onClick={() => setModalResultadoOpen(false)}
-                                    className={`w-full py-3 rounded-xl font-bold min-h-[48px] transition-all active:scale-95 ${
-                                        isSuccess ? 'bg-teal-600 hover:bg-teal-700 text-white'
-                                        : isEmpty  ? 'bg-slate-800 hover:bg-slate-900 text-white'
-                                        :            'bg-slate-600 hover:bg-slate-700 text-white'
-                                    }`}
+                                    className={`w-full py-3 rounded-xl font-bold min-h-[48px] transition-all active:scale-95 ${isSuccess ? 'bg-teal-600 hover:bg-teal-700 text-white'
+                                        : isEmpty ? 'bg-slate-800 hover:bg-slate-900 text-white'
+                                            : 'bg-slate-600 hover:bg-slate-700 text-white'
+                                        }`}
                                 >
                                     Entendido
                                 </button>

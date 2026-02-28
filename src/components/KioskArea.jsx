@@ -75,7 +75,7 @@ export default function KioskArea({ user, onLogout }) {
             </div>
           </div>
           <button onClick={onLogout} className="flex flex-col items-center text-red-500 hover:text-red-700 font-bold text-xs gap-1 shrink-0 min-w-[44px] min-h-[44px] justify-center">
-            <LogOut size={18} /> Sair
+            <LogOut size={18} /> Voltar
           </button>
         </div>
       </div>
@@ -105,8 +105,8 @@ export default function KioskArea({ user, onLogout }) {
 
           {isManager() && (
             <button onClick={() => setActiveTab('team')} className={`flex-1 py-2.5 px-3 sm:px-4 whitespace-nowrap rounded-md font-bold text-xs sm:text-sm flex justify-center items-center gap-1.5 sm:gap-2 transition-all min-h-[44px] cursor-pointer ${activeTab === 'team' ? 'bg-error text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>
-              <AlertCircle size={16} /> Atrasadas
-              {teamOverdueTasks.length > 0 && <span className="ml-1 bg-white text-red-600 font-black text-xs px-2 rounded-full">{teamOverdueTasks.length}</span>}
+              <AlertCircle size={16} /> Atrasadas da Equipe
+              {teamOverdueTasks.length > 0 && <span className="ml-1 bg-white text-red-600 font-black text-sm px-2 rounded-full">{teamOverdueTasks.length}</span>}
             </button>
           )}
         </div>
@@ -185,6 +185,11 @@ export default function KioskArea({ user, onLogout }) {
                           <Clock size={10} /> Até {item.template.due_time.slice(0, 5)}
                         </span>
                       )}
+                      {item.template?.routine_items?.length > 0 && item.template.routine_items.map((ri, idx) => ri.routine_templates && (
+                        <span key={`rot-${idx}`} className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded border border-amber-200 font-bold uppercase flex items-center gap-1 whitespace-nowrap">
+                          📋 {ri.routine_templates.title}
+                        </span>
+                      ))}
                     </div>
                     {item.template?.description && (
                       <p className="text-slate-500 text-xs mb-2 line-clamp-1">{item.template.description}</p>
@@ -256,6 +261,16 @@ export default function KioskArea({ user, onLogout }) {
                     <div className="p-5">
                       <h3 className="font-bold text-lg text-slate-800 mb-1">{item.template?.title}</h3>
                       <p className="text-sm text-slate-500 mb-4">{item.template?.description}</p>
+
+                      {item.template?.routine_items?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-4">
+                          {item.template.routine_items.map((ri, idx) => ri.routine_templates && (
+                            <span key={`rev-rot-${idx}`} className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded border border-amber-200 font-bold uppercase flex items-center gap-1 whitespace-nowrap">
+                              📋 {ri.routine_templates.title}
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-3 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
                         <div className="bg-blue-100 p-2 rounded-full text-blue-600"><UserCheck size={20} /></div>
@@ -365,11 +380,12 @@ export default function KioskArea({ user, onLogout }) {
                           <Clock size={10} /> Até {item.template.due_time.slice(0, 5)}
                         </span>
                       )}
-                      {item.template?.role?.name && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-600 border border-slate-300">
-                          {item.template.role.name}
+
+                      {item.template?.routine_items?.length > 0 && item.template.routine_items.map((ri, idx) => ri.routine_templates && (
+                        <span key={`team-rot-${idx}`} className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.5 rounded border border-amber-200 font-bold uppercase flex items-center gap-1 whitespace-nowrap">
+                          📋 {ri.routine_templates.title}
                         </span>
-                      )}
+                      ))}
                     </div>
                     {responsavelLabel && (
                       <p className="text-xs text-slate-500 mt-1">

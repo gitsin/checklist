@@ -29,7 +29,8 @@ export function useKioskData(user) {
       .select(`
         *,
         template:task_templates (
-          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
+          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name),
+          routine_items(routine_templates(id, title))
         )
       `)
       .eq('store_id', user.store_id)
@@ -40,7 +41,8 @@ export function useKioskData(user) {
       .select(`
         *,
         template:task_templates (
-          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
+          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name),
+          routine_items(routine_templates(id, title))
         )
       `)
       .eq('store_id', user.store_id)
@@ -53,7 +55,8 @@ export function useKioskData(user) {
       .select(`
         *,
         template:task_templates (
-          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name)
+          id, title, description, frequency_type, due_time, requires_photo_evidence, role_id, role:roles (name),
+          routine_items(routine_templates(id, title))
         )
       `)
       .eq('store_id', user.store_id)
@@ -115,7 +118,10 @@ export function useKioskData(user) {
           .from('checklist_items')
           .select(`
               *,
-              template:task_templates (title, description, requires_photo_evidence),
+              template:task_templates (
+                title, description, requires_photo_evidence,
+                routine_items(routine_templates(id, title))
+              ),
               worker:completed_by (full_name)
           `)
           .eq('store_id', user.store_id)
@@ -135,7 +141,10 @@ export function useKioskData(user) {
           .from('checklist_items')
           .select(`
               *,
-              template:task_templates (title, description, frequency_type, due_time, role_id, role:roles (name)),
+              template:task_templates (
+                title, description, frequency_type, due_time, role_id, role:roles (name),
+                routine_items(routine_templates(id, title))
+              ),
               worker:completed_by (full_name)
           `)
           .eq('store_id', user.store_id)
@@ -146,7 +155,10 @@ export function useKioskData(user) {
           .from('checklist_items')
           .select(`
               *,
-              template:task_templates (title, description, frequency_type, due_time, role_id, role:roles (name)),
+              template:task_templates (
+                title, description, frequency_type, due_time, role_id, role:roles (name),
+                routine_items(routine_templates(id, title))
+              ),
               worker:completed_by (full_name)
           `)
           .eq('store_id', user.store_id)
