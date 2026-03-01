@@ -3,7 +3,7 @@ import { supabase } from "../../supabaseClient";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, ShieldCheck, User, Phone } from "lucide-react";
 
 // Adicionei a prop 'initialTab' aqui embaixo
-export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initialTab = 'colaboradores' }) {
+export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initialTab = 'colaboradores', orgId }) {
 
     // O estado inicial agora respeita o que foi pedido (Cargos ou Colaboradores)
     const [activeTab, setActiveTab] = useState(initialTab);
@@ -30,7 +30,7 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
     async function criarCargo() {
         if (!novoCargoNome) return alert("Preencha o nome do cargo");
         const slugAuto = novoCargoNome.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        const { error } = await supabase.from("roles").insert({ name: novoCargoNome, slug: slugAuto, active: true });
+        const { error } = await supabase.from("roles").insert({ name: novoCargoNome, slug: slugAuto, active: true, organization_id: orgId });
         if (error) alert(error.message); else { setNovoCargoNome(""); onUpdate(); }
     }
 
@@ -74,7 +74,7 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
     async function salvarNovoColaborador() {
         if (!novoColab.nome || !novoColab.loja || !novoColab.cargo) return alert("Campos obrigatórios");
         const { error } = await supabase.from("employee").insert({
-            full_name: novoColab.nome, store_id: novoColab.loja, role_id: novoColab.cargo, manager_id: novoColab.gestor || null, phone: novoColab.phone || null, active: true
+            full_name: novoColab.nome, store_id: novoColab.loja, role_id: novoColab.cargo, manager_id: novoColab.gestor || null, phone: novoColab.phone || null, active: true, organization_id: orgId
         });
         if (error) alert(error.message); else { setModalNovoColabOpen(false); buscarColaboradores(); }
     }

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, MessageCircle } from "lucide-react";
 
-export default function AdminStores({ goBack, lojas, onUpdate }) {
+export default function AdminStores({ goBack, lojas, onUpdate, orgId }) {
   const [novaLojaNome, setNovaLojaNome] = useState("");
   const [modalEditarLojaOpen, setModalEditarLojaOpen] = useState(false);
   const [lojaEmEdicao, setLojaEmEdicao] = useState(null);
@@ -10,7 +10,7 @@ export default function AdminStores({ goBack, lojas, onUpdate }) {
 
   async function criarLoja() {
     if (!novaLojaNome) return alert("Digite o nome da loja");
-    const { error } = await supabase.from("stores").insert({ name: novaLojaNome, timezone: 'America/Sao_Paulo', active: true });
+    const { error } = await supabase.from("stores").insert({ name: novaLojaNome, timezone: 'America/Sao_Paulo', active: true, organization_id: orgId });
     if (error) alert("Erro: " + error.message); else { setNovaLojaNome(""); onUpdate(); }
   }
 

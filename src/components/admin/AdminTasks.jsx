@@ -3,7 +3,7 @@ import { supabase } from "../../supabaseClient";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle, Sparkles, Filter, CalendarCheck } from "lucide-react";
 import TaskWizard from "./TaskWizard";
 
-export default function AdminTasks({ goBack, lojas, roles }) {
+export default function AdminTasks({ goBack, lojas, roles, orgId }) {
     const [listaTemplates, setListaTemplates] = useState([]);
     const [filtroLojaTarefa, setFiltroLojaTarefa] = useState("");
     const [filtroCargoTarefa, setFiltroCargoTarefa] = useState("");
@@ -140,7 +140,8 @@ export default function AdminTasks({ goBack, lojas, roles }) {
             specific_day_of_week: novaTarefa.freq === 'weekly' ? parseInt(novaTarefa.diaSemana) : null,
             specific_day_of_month: novaTarefa.freq === 'monthly' ? parseInt(novaTarefa.diaMes) : null,
             notify_whatsapp: novaTarefa.notifyWhatsapp,
-            active: true
+            active: true,
+            organization_id: orgId
         }).select('id').single();
 
         if (error) {
@@ -332,7 +333,8 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                     title: titulo, description: desc, frequency_type: freq || 'daily',
                     store_id, role_id, due_time: hora || null, requires_photo_evidence: foto === 'true', active: true,
                     specific_day_of_week: diaSem ? parseInt(diaSem) : null,
-                    specific_day_of_month: diaMes ? parseInt(diaMes) : null
+                    specific_day_of_month: diaMes ? parseInt(diaMes) : null,
+                    organization_id: orgId
                 }).select('id').single();
 
                 if (tplErr) {
@@ -872,6 +874,7 @@ export default function AdminTasks({ goBack, lojas, roles }) {
                 <TaskWizard
                     lojas={lojas}
                     roles={roles}
+                    orgId={orgId}
                     onClose={() => setWizardOpen(false)}
                     onSaved={(resumo) => {
                         setWizardOpen(false);

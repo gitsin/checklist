@@ -41,6 +41,7 @@ export function useSpotTask(user, fetchData) {
         requires_photo_evidence: spotForm.requires_photo,
         notify_whatsapp: spotForm.notify_whatsapp,
         active: false,
+        organization_id: user.organization_id,
       })
       .select('id')
       .single();
@@ -56,6 +57,7 @@ export function useSpotTask(user, fetchData) {
       store_id: user.store_id,
       scheduled_date: getLocalDate(),
       status: 'PENDING',
+      organization_id: user.organization_id,
     });
 
     setSpotLoading(false);

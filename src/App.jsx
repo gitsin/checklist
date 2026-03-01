@@ -1,109 +1,198 @@
 import { useState, useEffect } from "react";
-import { Routes, Route, useNavigate, Navigate } from "react-router-dom";
+import { Routes, Route, useNavigate, Navigate, useParams } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 import {
-  BookOpen, Info, Shield, LogOut, Store, User, ArrowRight, ArrowLeft, Lock, X
+  BookOpen, Info, Store, User, ArrowLeft, Lock
 } from "lucide-react";
 
-// Importação dos Módulos
 import AdminArea from "./components/AdminArea";
 import UserManual from "./components/UserManual";
 import KioskArea from "./components/KioskArea";
+import AdminLogin from "./components/AdminLogin";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
-  const navigate = useNavigate();
-
-  // --- ESTADOS GERAIS ---
-  const [loading, setLoading] = useState(false);
-
-  // --- DADOS PARA LOGIN (HOME) ---
-  const [stores, setStores] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [selectedStore, setSelectedStore] = useState(null);
-
-  // --- DADOS DO USUÁRIO LOGADO ---
-  const [currentUserData, setCurrentUserData] = useState(null);
-
-  // --- CARGA INICIAL ---
-  useEffect(() => {
-    fetchStores();
-  }, []);
-
-  async function fetchStores() {
-    const { data } = await supabase.from('stores').select('*').eq('active', true).order('name');
-    setStores(data || []);
-  }
-
-  async function handleSelectStore(store) {
-    setSelectedStore(store);
-    const { data } = await supabase.from('employee').select('*, roles(name)').eq('store_id', store.id).eq('active', true).order('full_name');
-    setUsers(data || []);
-  }
-
-  // --- LOGIN DIRETO (recebe o user clicado) ---
-  function handleLogin(user) {
-    setLoading(true);
-    const userData = {
-      ...user,
-      store_name: selectedStore.name,
-      role_name: user.roles?.name
-    };
-    setCurrentUserData(userData);
-    setLoading(false);
-    navigate('/kiosk');
-  }
-
-  // Sair do kiosk -> volta para seleção de funcionário (mantém loja)
-  const handleLogout = () => {
-    setCurrentUserData(null);
-    navigate('/');
-  };
-
-  // Sair totalmente -> volta para seleção de loja
-  const handleFullLogout = () => {
-    setCurrentUserData(null);
-    setSelectedStore(null);
-    setUsers([]);
-    navigate('/');
-  };
-
   return (
     <Routes>
-      <Route path="/" element={
-        <Home
-          stores={stores}
-          users={users}
-          selectedStore={selectedStore}
-          loading={loading}
-          handleSelectStore={handleSelectStore}
-          handleLogin={handleLogin}
-          navigate={navigate}
-          onBack={() => { setSelectedStore(null); setUsers([]); }}
-        />
+      {/* Kiosk com slug da org */}
+      <Route path="/:orgSlug" element={<KioskHome />} />
+      <Route path="/:orgSlug/kiosk" element={<KioskRoute />} />
+
+      {/* Admin (protegido por auth) */}
+      <Route path="/login" element={<AdminLogin />} />
+      <Route path="/admin" element={
+        <ProtectedRoute>
+          <AdminArea onExit={() => {}} />
+        </ProtectedRoute>
       } />
 
-      <Route path="/admin" element={<AdminArea onExit={() => navigate('/')} />} />
-      <Route path="/manual" element={<UserManual onExit={() => navigate('/')} />} />
+      {/* Manual */}
+      <Route path="/manual" element={<UserManual onExit={() => {}} />} />
 
-      <Route
-        path="/kiosk"
-        element={
-          currentUserData ? (
-            <KioskArea user={currentUserData} onLogout={handleLogout} />
-          ) : (
-            <Navigate to="/" replace />
-          )
-        }
-      />
+      {/* Fallback: redireciona para org padrao */}
+      <Route path="/" element={<Navigate to="/default" replace />} />
     </Routes>
   );
 }
 
 // =============================================================================
+// KIOSK HOME — Tela de login de 2 etapas, scoped por org
+// =============================================================================
+function KioskHome() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams();
+
+  const [organization, setOrganization] = useState(null);
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [orgError, setOrgError] = useState(false);
+
+  const [stores, setStores] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    resolveOrg();
+  }, [orgSlug]);
+
+  async function resolveOrg() {
+    setOrgLoading(true);
+    setOrgError(false);
+
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('id, name, slug, logo_url')
+      .eq('slug', orgSlug)
+      .eq('active', true)
+      .single();
+
+    if (error || !data) {
+      setOrgError(true);
+      setOrgLoading(false);
+      return;
+    }
+
+    setOrganization(data);
+    setOrgLoading(false);
+    fetchStores(data.id);
+  }
+
+  async function fetchStores(orgId) {
+    const { data } = await supabase
+      .from('stores')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('active', true)
+      .order('name');
+    setStores(data || []);
+  }
+
+  async function handleSelectStore(store) {
+    setSelectedStore(store);
+    const { data } = await supabase
+      .from('employee')
+      .select('*, roles(name)')
+      .eq('store_id', store.id)
+      .eq('active', true)
+      .order('full_name');
+    setUsers(data || []);
+  }
+
+  function handleLogin(user) {
+    setLoading(true);
+    const userData = {
+      ...user,
+      store_name: selectedStore.name,
+      role_name: user.roles?.name,
+      organization_id: organization.id,
+    };
+
+    // Salva no sessionStorage para persistir durante a sessao
+    sessionStorage.setItem('kiosk_user', JSON.stringify(userData));
+    sessionStorage.setItem('kiosk_org', orgSlug);
+
+    setLoading(false);
+    navigate(`/${orgSlug}/kiosk`);
+  }
+
+  const handleBack = () => {
+    setSelectedStore(null);
+    setUsers([]);
+  };
+
+  // Loading org
+  if (orgLoading) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center font-sans">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-slate-500 text-sm font-medium">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Org not found
+  if (orgError) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center font-sans p-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Organização não encontrada</h1>
+          <p className="text-slate-500 mb-6">Verifique o endereço e tente novamente.</p>
+          <button
+            onClick={() => navigate('/login')}
+            className="text-primary-500 hover:text-primary-600 font-medium text-sm cursor-pointer"
+          >
+            Ir para login administrativo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Home
+      stores={stores}
+      users={users}
+      selectedStore={selectedStore}
+      loading={loading}
+      handleSelectStore={handleSelectStore}
+      handleLogin={handleLogin}
+      navigate={navigate}
+      onBack={handleBack}
+      orgSlug={orgSlug}
+      organization={organization}
+    />
+  );
+}
+
+// =============================================================================
+// KIOSK ROUTE — Dashboard com protecao de sessao
+// =============================================================================
+function KioskRoute() {
+  const navigate = useNavigate();
+  const { orgSlug } = useParams();
+
+  const stored = sessionStorage.getItem('kiosk_user');
+  const storedOrg = sessionStorage.getItem('kiosk_org');
+
+  if (!stored || storedOrg !== orgSlug) {
+    return <Navigate to={`/${orgSlug}`} replace />;
+  }
+
+  const userData = JSON.parse(stored);
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('kiosk_user');
+    navigate(`/${orgSlug}`);
+  };
+
+  return <KioskArea user={userData} onLogout={handleLogout} />;
+}
+
+// =============================================================================
 // CONSTANTES
 // =============================================================================
-const ADMIN_PASSWORD = "1234";
-
 const STORE_COLORS = [
   "from-blue-600 to-indigo-700",
   "from-emerald-600 to-teal-700",
@@ -126,23 +215,7 @@ const AVATAR_COLORS = [
 // =============================================================================
 // HOME COMPONENT — Tela Kiosk de 2 etapas
 // =============================================================================
-function Home({ stores, users, selectedStore, loading, handleSelectStore, handleLogin, navigate, onBack }) {
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminPwd, setAdminPwd] = useState("");
-  const [pwdError, setPwdError] = useState(false);
-
-  function tryAdminLogin() {
-    if (adminPwd === ADMIN_PASSWORD) {
-      setShowAdminModal(false);
-      setAdminPwd("");
-      setPwdError(false);
-      navigate('/admin');
-    } else {
-      setPwdError(true);
-      setTimeout(() => setPwdError(false), 2000);
-    }
-  }
-
+function Home({ stores, users, selectedStore, loading, handleSelectStore, handleLogin, navigate, onBack, orgSlug, organization }) {
   return (
     <div className="min-h-screen bg-slate-100 font-sans">
 
@@ -162,16 +235,20 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
         </div>
       </div>
 
-      {/* ---- CONTEÚDO PRINCIPAL ---- */}
+      {/* ---- CONTEUDO PRINCIPAL ---- */}
       <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 sm:py-8 flex flex-col min-h-[90vh] pb-safe">
 
         {/* LOGO */}
         <div className="text-center mb-6 sm:mb-10 animate-fade-in">
-          <h1 className="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight mb-1">Niilu</h1>
+          {organization?.logo_url ? (
+            <img src={organization.logo_url} alt={organization.name} className="h-16 mx-auto mb-2" />
+          ) : (
+            <h1 className="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight mb-1">Niilu</h1>
+          )}
           <p className="text-slate-400 text-xs sm:text-sm font-medium tracking-widest uppercase">Gestão de Rotinas</p>
         </div>
 
-        {/* ====== ETAPA 1: SELEÇÃO DE LOJA ====== */}
+        {/* ====== ETAPA 1: SELECAO DE LOJA ====== */}
         {!selectedStore && (
           <div className="animate-fade-in flex-1">
             <h2 className="text-xl font-bold text-slate-700 mb-6 flex items-center gap-2">
@@ -209,10 +286,9 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
           </div>
         )}
 
-        {/* ====== ETAPA 2: SELEÇÃO DE FUNCIONÁRIO ====== */}
+        {/* ====== ETAPA 2: SELECAO DE FUNCIONARIO ====== */}
         {selectedStore && (
           <div className="animate-fade-in flex-1">
-            {/* Breadcrumb / Voltar */}
             <button
               onClick={onBack}
               className="flex items-center gap-2 text-slate-400 hover:text-slate-800 mb-6 text-sm font-medium transition-colors group"
@@ -247,7 +323,6 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
                     `}
                     style={{ animationDelay: `${idx * 60}ms` }}
                   >
-                    {/* Avatar com iniciais */}
                     <div className={`
                       ${AVATAR_COLORS[idx % AVATAR_COLORS.length]}
                       w-12 h-12 rounded-full flex items-center justify-center
@@ -271,58 +346,16 @@ function Home({ stores, users, selectedStore, loading, handleSelectStore, handle
           </div>
         )}
 
-        {/* ---- BOTÃO ADMIN (RODAPÉ) ---- */}
+        {/* ---- BOTAO ADMIN (RODAPE) ---- */}
         <div className="mt-auto pt-6 sm:pt-8 text-center pb-safe">
           <button
-            onClick={() => { setShowAdminModal(true); setAdminPwd(""); setPwdError(false); }}
-            className="text-slate-400 hover:text-slate-600 text-xs font-medium flex items-center gap-1.5 mx-auto px-4 py-3 rounded-lg hover:bg-slate-200 transition-colors min-h-[44px]"
+            onClick={() => navigate('/login')}
+            className="text-slate-400 hover:text-slate-600 text-xs font-medium flex items-center gap-1.5 mx-auto px-4 py-3 rounded-lg hover:bg-slate-200 transition-colors min-h-[44px] cursor-pointer"
           >
             <Lock size={12} /> Acesso Admin
           </button>
         </div>
       </div>
-
-      {/* ====== MODAL SENHA ADMIN ====== */}
-      {showAdminModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-fade-in" onClick={() => setShowAdminModal(false)}>
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl p-6 sm:p-8 w-full sm:max-w-xs shadow-2xl pb-safe" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                <Shield size={20} className="text-primary-500" /> Área Admin
-              </h3>
-              <button onClick={() => setShowAdminModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
-              </button>
-            </div>
-
-            <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Senha de Acesso</label>
-            <input
-              type="password"
-              autoFocus
-              className={`w-full border-2 p-4 rounded-xl text-center text-2xl font-mono tracking-[0.5em] focus:outline-none transition-colors ${pwdError
-                ? 'border-error bg-red-50 text-error animate-[shake_0.3s_ease-in-out]'
-                : 'border-slate-200 focus:border-primary-500 text-slate-800'
-                }`}
-              value={adminPwd}
-              onChange={e => setAdminPwd(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && tryAdminLogin()}
-              maxLength={10}
-              placeholder="••••"
-            />
-
-            {pwdError && (
-              <p className="text-red-500 text-xs font-bold mt-2 text-center animate-fade-in">Senha incorreta</p>
-            )}
-
-            <button
-              onClick={tryAdminLogin}
-              className="w-full bg-primary-500 text-white font-bold py-4 rounded-xl mt-4 hover:bg-primary-600 active:scale-95 transition-all shadow-lg min-h-[48px] cursor-pointer"
-            >
-              Entrar
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

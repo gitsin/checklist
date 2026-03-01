@@ -17,7 +17,7 @@ const DIAS_SEMANA = [
     { value: 7, label: "Domingo", short: "Dom" },
 ];
 
-export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
+export default function TaskWizard({ lojas, roles, onClose, onSaved, orgId }) {
     // --- STATE ---
     const [step, setStep] = useState(0);
     const [animDir, setAnimDir] = useState("forward"); // "forward" | "back"
@@ -143,6 +143,7 @@ export default function TaskWizard({ lojas, roles, onClose, onSaved }) {
             specific_day_of_month: frequencia === "monthly" ? diaMes : null,
             notify_whatsapp: false,
             active: true,
+            organization_id: orgId,
         }).select('id').single();
 
         if (error) {

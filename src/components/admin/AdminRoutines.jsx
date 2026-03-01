@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, Layers, Clock, Trash2, Eye, X, CheckSquare, MessageCircle } from "lucide-react";
 
-export default function AdminRoutines({ goBack, lojas }) {
+export default function AdminRoutines({ goBack, lojas, orgId }) {
     const [listaRotinas, setListaRotinas] = useState([]);
     const [filtroLojaRotina, setFiltroLojaRotina] = useState("");
 
@@ -75,7 +75,8 @@ export default function AdminRoutines({ goBack, lojas }) {
         const { data: rotinaCriada, error: errRotina } = await supabase.from('routine_templates').insert({
             store_id: novaRotina.store_id, title: novaRotina.title, description: novaRotina.description,
             start_time: novaRotina.start_time || null, deadline_time: novaRotina.deadline_time || null, icon: novaRotina.icon,
-            notify_whatsapp: novaRotina.notify_whatsapp
+            notify_whatsapp: novaRotina.notify_whatsapp,
+            organization_id: orgId
         }).select().single();
         if (errRotina) return alert("Erro ao criar rotina: " + errRotina.message);
         if (itensSelecionados.length > 0) {

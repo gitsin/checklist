@@ -99,7 +99,8 @@ export function useTaskActions(user, fetchData) {
       let evidenceImageUrl = null;
 
       if (photoFile) {
-        const fileName = `${user.store_id}/${taskId}_${Date.now()}.jpg`;
+        const orgPrefix = user.organization_id ? `${user.organization_id}/` : '';
+        const fileName = `${orgPrefix}${user.store_id}/${taskId}_${Date.now()}.jpg`;
 
         const { error: uploadError } = await supabase.storage
           .from('task-evidence')
