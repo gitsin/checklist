@@ -9,6 +9,7 @@ import AdminEmployees from "./admin/AdminEmployees";
 import AdminTasks from "./admin/AdminTasks";
 import AdminRoutines from "./admin/AdminRoutines";
 import AdminReports from "./admin/AdminReports";
+import AdminChecklistReport from "./admin/AdminChecklistReport";
 
 export default function AdminArea({ onExit }) {
   const [screen, setScreen] = useState('menu');
@@ -37,7 +38,8 @@ export default function AdminArea({ onExit }) {
     cargos: 'Cargos',
     tarefas: 'Tarefas',
     rotinas: 'Rotinas',
-    relatorios: 'Relatórios',
+    checklists: 'Checklists',
+    relatorios: 'Painel BI',
   };
 
   return (
@@ -78,8 +80,14 @@ export default function AdminArea({ onExit }) {
             <button onClick={() => setScreen('rotinas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-amber-50 border border-slate-200 hover:border-amber-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-amber-600">
               <Layers size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Rotinas</span>
             </button>
+
+            {/* NOVO: Relatório Mensal Matriz */}
+            <button onClick={() => setScreen('checklists')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-blue-50 border border-slate-200 hover:border-blue-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-blue-600">
+              <ListChecks size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Checklists</span>
+            </button>
+
             <button onClick={() => setScreen('relatorios')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-teal-50 border border-slate-200 hover:border-teal-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-teal-600">
-              <BarChart3 size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Relatórios</span>
+              <BarChart3 size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Painel BI</span>
             </button>
           </div>
         )}
@@ -92,6 +100,7 @@ export default function AdminArea({ onExit }) {
 
         {screen === 'tarefas' && <AdminTasks goBack={goBack} lojas={lojas} roles={roles} />}
         {screen === 'rotinas' && <AdminRoutines goBack={goBack} lojas={lojas} />}
+        {screen === 'checklists' && <AdminChecklistReport goBack={goBack} lojas={lojas} allRoles={roles} />}
         {screen === 'relatorios' && <AdminReports goBack={goBack} lojas={lojas} />}
 
       </div>
