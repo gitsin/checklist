@@ -1,32 +1,31 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { supabase, setOrgHeader } from '../supabaseClient';
 
 const AuthContext = createContext(null);
 
+// ─── Mapa de destino por tipo de usuário ──────────────────────────────────────
+function getHomeRoute(userType, storeId) {
+  switch (userType) {
+    case 'super_admin':        return '/admin';
+    case 'holding_owner':      return '/admin';
+    case 'group_director':     return '/admin';
+    case 'store_manager':      return '/gerente';
+    case 'disp_compartilhado': return `/kiosk/${storeId}`;
+    case 'colaborador':        return '/login'; // usa kiosk público por enquanto
+    default:                   return '/login';
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [adminUser, setAdminUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession]             = useState(null);
+  const [userProfile, setUserProfile]     = useState(null);
+  const [loading, setLoading]             = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      // Se não marcou "manter conectado", limpar sessão ao reabrir navegador
-      if (s && !localStorage.getItem('rememberMe') && !sessionStorage.getItem('sessionActive')) {
-        supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-      setSession(s);
-      if (s) {
-        sessionStorage.setItem('sessionActive', '1');
-        fetchAdminProfile(s.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
+  const signingInRef = useRef(false);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       if (event === 'PASSWORD_RECOVERY') {
         setPasswordRecovery(true);
         setSession(s);
@@ -34,12 +33,37 @@ export function AuthProvider({ children }) {
         return;
       }
 
+      if (event === 'INITIAL_SESSION') {
+        if (s && !localStorage.getItem('rememberMe') && !sessionStorage.getItem('sessionActive')) {
+          // Descarta estado imediatamente sem aguardar o signOut
+          // (awaitar signOut dentro do onAuthStateChange causa deadlock de callbacks)
+          setSession(null);
+          setUserProfile(null);
+          setOrgHeader(null);
+          setLoading(false);
+          supabase.auth.signOut({ scope: 'local' }); // fire-and-forget: limpa o token do localStorage
+          return;
+        }
+        setSession(s);
+        if (s) {
+          sessionStorage.setItem('sessionActive', '1');
+          await fetchUserProfile(s.user.id);
+        } else {
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (event === 'SIGNED_IN' && signingInRef.current) {
+        setSession(s);
+        return;
+      }
+
       setSession(s);
       if (s) {
-        sessionStorage.setItem('sessionActive', '1');
-        fetchAdminProfile(s.user.id);
+        await fetchUserProfile(s.user.id);
       } else {
-        setAdminUser(null);
+        setUserProfile(null);
         setLoading(false);
       }
     });
@@ -47,38 +71,59 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function fetchAdminProfile(authUserId) {
-    const { data } = await supabase
-      .from('admin_users')
-      .select('*, organization:organizations(id, name, slug, logo_url)')
-      .eq('auth_user_id', authUserId)
-      .eq('active', true)
-      .single();
+  async function fetchUserProfile(authUserId) {
+    try {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select(`
+          *,
+          organization:organizations(id, name, slug, logo_url),
+          store:stores(id, name, shortName),
+          group:restaurant_groups(id, name),
+          role:roles(id, name, slug)
+        `)
+        .eq('auth_user_id', authUserId)
+        .eq('active', true)
+        .single();
 
-    setAdminUser(data || null);
-    setLoading(false);
+      setUserProfile(data || null);
+      setOrgHeader(data?.organization_id || null);
+    } catch {
+      setUserProfile(null);
+      setOrgHeader(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function signIn(email, password, rememberMe = false) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    signingInRef.current = true;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
 
-    if (rememberMe) {
-      localStorage.setItem('rememberMe', '1');
-    } else {
-      localStorage.removeItem('rememberMe');
+      if (rememberMe) {
+        localStorage.setItem('rememberMe', '1');
+      } else {
+        localStorage.removeItem('rememberMe');
+      }
+      sessionStorage.setItem('sessionActive', '1');
+
+      setSession(data.session);
+      await fetchUserProfile(data.user.id);
+      return data;
+    } finally {
+      signingInRef.current = false;
     }
-    sessionStorage.setItem('sessionActive', '1');
-
-    return data;
   }
 
   async function signOut() {
     localStorage.removeItem('rememberMe');
     sessionStorage.removeItem('sessionActive');
     await supabase.auth.signOut();
+    setOrgHeader(null);
     setSession(null);
-    setAdminUser(null);
+    setUserProfile(null);
     setPasswordRecovery(false);
   }
 
@@ -94,20 +139,37 @@ export function AuthProvider({ children }) {
     setPasswordRecovery(false);
   }
 
+  const userType = userProfile?.user_type || null;
+
   const value = {
     session,
-    adminUser,
+    userProfile,
     loading,
+    passwordRecovery,
+    // Tipo e escopos
+    userType,
+    orgId:   userProfile?.organization_id || null,
+    groupId: userProfile?.restaurant_group_id || null,
+    storeId: userProfile?.store_id || null,
+    // Helpers de role (para ProtectedRoute e UI)
+    isSuperAdmin:       userType === 'super_admin',
+    isHoldingOwner:     userType === 'holding_owner',
+    isGroupDirector:    userType === 'group_director',
+    isStoreManager:     userType === 'store_manager',
+    isDispCompartilhado: userType === 'disp_compartilhado',
+    isColaborador:      userType === 'colaborador',
+    // Compatibilidade com código admin legado
+    adminUser: userProfile,
+    isSuperAdmin_legacy: userType === 'super_admin',
+    isHoldingOwner_legacy: userType === 'holding_owner',
+    orgName: userProfile?.organization?.name || null,
+    // Rota correta pós-login
+    getHomeRoute: () => getHomeRoute(userType, userProfile?.store_id),
+    // Ações
     signIn,
     signOut,
     resetPassword,
     updatePassword,
-    passwordRecovery,
-    orgId: adminUser?.organization_id || null,
-    orgName: adminUser?.organization?.name || null,
-    isSuperAdmin: adminUser?.role === 'super_admin',
-    isHoldingOwner: adminUser?.role === 'holding_owner',
-    isGroupDirector: adminUser?.role === 'group_director',
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

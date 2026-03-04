@@ -1,8 +1,8 @@
-# Restaurante App - Sistema de Gestão de Tarefas
+# Restaurante App — Sistema de Gestão de Tarefas (PRD)
 
 ## Visão Geral
 
-Sistema de gestão operacional para restaurantes/estabelecimentos comerciais, focado em delegação de tarefas, controle de execução e supervisão de equipes. Interface mobile-first estilo kiosk.
+Sistema de gestão operacional para restaurantes/estabelecimentos comerciais, focado em delegação de tarefas, controle de execução e supervisão de equipes. Interface mobile-first estilo kiosk, com suporte a múltiplos grupos, lojas e níveis de acesso.
 
 ## Stack Tecnológico
 
@@ -11,7 +11,7 @@ Sistema de gestão operacional para restaurantes/estabelecimentos comerciais, fo
 | Frontend | React 19.2 + Vite |
 | Estilização | Tailwind CSS 3.4 |
 | Roteamento | React Router DOM 7 |
-| Backend/DB | Supabase (PostgreSQL) |
+| Backend/DB | Supabase (PostgreSQL + Auth + Storage) |
 | Ícones | Lucide React |
 | Deploy | Vercel |
 
@@ -19,104 +19,158 @@ Sistema de gestão operacional para restaurantes/estabelecimentos comerciais, fo
 
 ```
 src/
-├── App.jsx                    # Login (seleção loja/funcionário)
-├── KioskArea.jsx              # Dashboard colaborador + gerente
-├── ManagerArea.jsx            # Dashboard revisão gerente
-├── UserManual.jsx             # Manual do usuário in-app
-├── AdminArea.jsx              # Hub administrativo
-├── supabaseClient.js          # Cliente Supabase
-└── components/admin/
-    ├── AdminStores.jsx        # CRUD lojas
-    ├── AdminEmployees.jsx     # CRUD funcionários e cargos
-    ├── AdminTasks.jsx         # CRUD tarefas
-    ├── AdminRoutines.jsx      # CRUD rotinas
-    ├── AdminReports.jsx       # Relatórios e analytics
-    └── TaskWizard.jsx         # Wizard criação de tarefas
+├── App.jsx                          # Rotas + KioskHome + KioskRoute
+├── supabaseClient.js                # Cliente Supabase
+├── contexts/
+│   └── AuthContext.jsx              # Supabase Auth, sessão, getHomeRoute()
+├── components/
+│   ├── KioskArea.jsx                # Dashboard colaborador + gerente (hooks)
+│   ├── KioskShell.jsx               # Kiosk autenticado (disp_compartilhado)
+│   ├── StoreManagerArea.jsx         # Hub do gerente de loja
+│   ├── AdminArea.jsx                # Hub administrativo
+│   ├── LandingPage.jsx              # Página inicial pública
+│   ├── LoginPage.jsx                # Login Supabase Auth
+│   ├── ProtectedRoute.jsx           # Guard por user_type
+│   ├── UserManual.jsx               # Manual in-app
+│   └── admin/
+│       ├── AdminStores.jsx          # CRUD lojas
+│       ├── AdminEmployees.jsx       # CRUD colaboradores e cargos (usa user_profiles)
+│       ├── AdminGroups.jsx          # CRUD grupos + URL kiosk por grupo
+│       ├── AdminUsuarios.jsx        # CRUD usuários com auth (gerentes, diretores, tablets)
+│       ├── AdminTasks.jsx           # CRUD tarefas
+│       ├── AdminRoutines.jsx        # CRUD rotinas
+│       ├── AdminReports.jsx         # Relatórios e analytics
+│       ├── AdminChecklistReport.jsx # Checklist mensal
+│       └── TaskWizard.jsx           # Wizard de criação de tarefas
+├── hooks/                           # useKioskData, useTaskActions, useManagerActions, useSpotTask
+└── test/setup.js                    # Setup Vitest
 ```
 
 ## Módulos Funcionais
 
-### Kiosk (Colaborador)
+### Kiosk Público (`/:orgSlug` ou `/:orgSlug/:groupSlug`)
+- Seleção de loja → seleção de colaborador pelo nome
+- PIN opcional: se `pin_code` configurado, teclado numérico antes de entrar
+- Filtro por grupo: `/:orgSlug/:groupSlug` mostra apenas lojas do grupo
+- Sem autenticação; sessão em `sessionStorage`
+
+### Kiosk Autenticado (`/kiosk/:storeId`) — `disp_compartilhado`
+- Tablet físico faz login em `/login` com email/senha
+- `getHomeRoute()` redireciona para `/kiosk/:storeId`
+- `KioskShell` exibe colaboradores da loja; PIN flow se configurado
+- "Sair" → volta para `/login`
+
+### Kiosk (Colaborador — dentro do KioskArea)
 - Visualizar e finalizar tarefas abertas ou devolvidas
-- Completar tarefas com foto obrigatória [quando configurado]
-- Visualiza as suas tarefas finalizadas no dia.
+- Completar com foto obrigatória quando configurado
+- Ver tarefas finalizadas do dia
 
-### Área do Gestor 
-- Visualizar e finalizar suas tarefas abertas ou devolvidas
-- Aprovar/devolver tarefas finalizadas com observação pela equipe
-- Visualiza as suas tarefas finalizadas no dia.
-- Visualizar tarefas atrasadas e pendentes do seu time
-- Monitorar performance da equipe
+### Área do Gerente (`/gerente`)
+- Acesso via Supabase Auth (user_type = `store_manager`)
+- Visualizar/finalizar suas tarefas; aprovar/devolver tarefas da equipe
+- Configurar tarefas e rotinas da loja
+- Ver relatórios, checklist mensal, equipe
 
-Considera-se um usuário Gestor todos que tem algum funcionário cadastrado com seu usuário no campo Gestor.
-
-### Área Admin
-- **Lojas**: CRUD com integração WhatsApp
-- **Funcionários**: CRUD com hierarquia gerencial
-- **Cargos**: Gestão de funções/posições
-- **Tarefas**: Templates com frequência (diária/semanal/mensal)
+### Área Admin (`/admin`)
+- Acesso via Supabase Auth (`super_admin`, `holding_owner`, `group_director`)
+- **Lojas**: CRUD por grupo e organização
+- **Colaboradores**: CRUD usando `user_profiles`; criação kiosk (sem auth) com PIN opcional
+- **Cargos**: CRUD com `access_level` (kiosk / store_manager / group_director / holding_owner)
+- **Grupos**: CRUD com URL kiosk copiável por grupo
+- **Usuários**: CRUD de usuários autenticados (gerentes, diretores, tablets)
+- **Tarefas**: Templates com frequência diária/semanal/mensal/spot
 - **Rotinas**: Agrupamento de tarefas em workflows
-- **Relatórios**: Analytics e métricas de conclusão
+- **Relatórios / Checklist**: Analytics e métricas de conclusão
+
+## Tipos de Usuário e Rotas
+
+| `user_type` | Rota pós-login | Criação |
+|-------------|---------------|---------|
+| `colaborador` | kiosk público (sem login) | direto em `user_profiles` (sem edge function) |
+| `disp_compartilhado` | `/kiosk/:storeId` | edge function `create-admin-user` |
+| `store_manager` | `/gerente` | edge function |
+| `group_director` | `/admin` | edge function |
+| `holding_owner` | `/admin` | edge function |
+| `super_admin` | `/admin` | edge function |
+
+## roles.access_level
+
+O cargo define o nível de acesso do colaborador. Valores:
+
+| `access_level` | Badge UI | Cria conta auth? |
+|----------------|----------|-----------------|
+| `kiosk` | cinza | Não — PIN opcional |
+| `store_manager` | azul | Sim — email + senha |
+| `group_director` | violeta | Sim |
+| `holding_owner` | âmbar | Sim |
+
+## Kiosk por Grupo
+
+Cada `restaurant_group` tem um `slug`. A URL `/:orgSlug/:groupSlug` filtra as lojas exibidas pelo grupo. Administradores veem a URL copiável na tela AdminGroups.
+
+Exemplo: `/default/grupo-barley-s` → mostra apenas lojas do Grupo Barley's.
 
 ## Fluxo de Tarefas
 
 ```
-PENDING → COMPLETED (concluída diretamente)- Tarefas que foram finalizadas sem obs
-PENDING → WAITING_APPROVAL (submetida para revisão) - Tarefas que foram finalizadas com obs
-WAITING_APPROVAL → APPROVED (aprovada pelo gestor)
-WAITING_APPROVAL → RETURNED (devolvida com feedback)
+PENDING → COMPLETED           (finalizada sem observação)
+PENDING → WAITING_APPROVAL    (finalizada com observação/foto)
+WAITING_APPROVAL → APPROVED   (gestor aprova)
+WAITING_APPROVAL → RETURNED   (gestor devolve com feedback)
 ```
 
 ## Cronjobs
-- Rotina configurada no supabase para geração diária das tarefas as 04:00 AM, respeitando a frequência configurada
-- Não gerar tarefas em duplicidade 
-- Para tarefas mensais configuradas para dia 31 ou 30, antecipar em função do último dia do mês. Tarefa configurada para 31 é antecipada para 30 nos meses Abril, Junho, Setembro e Novembro. Tarefas configuradas para 30 ou 31 é anteciapda o último dia fevereiro
 
+- Geração diária de `checklist_items` às 04:00 AM (America/Sao_Paulo)
+- Sem duplicidade; respeita frequência configurada
+- Tarefas mensais dia 31 → antecipadas para dia 30 em meses com 30 dias
+- Tarefas mensais dia 30 ou 31 → antecipadas para último dia de fevereiro
 
 ## Tabelas Supabase
 
 | Tabela | Descrição |
 |--------|-----------|
-| `stores` | Lojas/unidades |
-| `employee` | Funcionários com relação gerente (manager_id) |
-| `roles` | Cargos/funções |
-| `task_templates` | Templates de tarefas |
-| `checklist_items` | Instâncias de tarefas agendadas |
-| `routine_templates` | Templates de rotinas |
-| `routine_items` | Tarefas vinculadas a rotinas |
+| `organizations` | Organizações/holdings; `slug` para URL do kiosk |
+| `restaurant_groups` | Grupos de lojas por marca/região; `slug` para URL do kiosk |
+| `stores` | Lojas; `restaurant_group_id` vincula ao grupo |
+| `user_profiles` | **Tabela central de usuários** — colaboradores kiosk e usuários auth |
+| `employee_legacy` | Legado (era `employee`); mantida, não usar |
+| `roles` | Cargos; `access_level` define o tipo de acesso |
+| `task_templates` | Templates de tarefas com frequência e regras |
+| `checklist_items` | Instâncias diárias geradas pelo cron; FK `completed_by_profile_id` → `user_profiles` |
+| `routine_templates` | Templates de rotinas por loja |
+| `routine_items` | Vínculo tarefa ↔ rotina (`routine_id` FK → `routine_templates`) |
 
-## Autenticação (ainda temporário)
+## Autenticação
 
-- **Modelo kiosk**: Seleção de loja → Seleção de funcionário
-- **Acesso admin**: Senha via modal
-- **Detecção de gerente**: Baseado no nome do cargo (palavras-chave: "gerente", "diretor", "admin", "gestão", "líder")
+- **Supabase Auth** com JWT — sessão gerenciada por `AuthContext`
+- Sessão persiste por tab via `sessionStorage`; `rememberMe` usa `localStorage`
+- Recuperação de senha via email (`/login` com redirect)
+- `ProtectedRoute` valida `user_type` antes de renderizar rotas protegidas
 
-## Configuração
+## Variáveis de Ambiente
 
-### Variáveis de Ambiente (.env.local)
 ```
-VITE_SUPABASE_URL=<url-do-projeto-supabase>
-VITE_SUPABASE_ANON_KEY=<chave-anonima-supabase>
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
-
-### Timezone para todo o sistema
-- Padrão: America/Sao_Paulo (UTC-3)
 
 ## Comandos
 
 ```bash
-npm install        # Instalar dependências
 npm run dev        # Servidor de desenvolvimento
 npm run build      # Build de produção
 npm run preview    # Preview do build
+npm test           # Rodar testes de regressão
+npm run test:watch # Testes em modo watch
 ```
 
 ## Convenções de Código
 
 - Componentes React funcionais com hooks
-- Estado local com useState/useEffect
-- Tailwind CSS para estilização (classes utilitárias)
-- Consultas Supabase com async/await
-- Interface em português brasileiro
-- Evitar mensagens de erros técnicos ao usuário final. Prefira "Um erro ocorreu, por favor tente novamente" que "error 404 xyz"
-- utilizar o arquivo .claude/styleguide como referência de UX e UI
+- Estado local com `useState` / `useEffect`
+- Tailwind CSS (classes utilitárias) — referência em `.claude/styleguide.md`
+- Consultas Supabase com `async/await`
+- Interface em **português brasileiro**
+- Erros ao usuário: genéricos ("Um erro ocorreu, por favor tente novamente")
+- Rodar `npm test` após toda mudança antes de commitar

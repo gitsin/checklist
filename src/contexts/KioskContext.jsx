@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { supabase, setOrgHeader } from '../supabaseClient';
 
 const KioskContext = createContext(null);
 
@@ -32,6 +32,7 @@ export function KioskProvider({ children }) {
       setOrganization(null);
     } else {
       setOrganization(data);
+      setOrgHeader(data.id);
     }
 
     setLoading(false);

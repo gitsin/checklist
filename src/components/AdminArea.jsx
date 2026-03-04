@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ChevronRight, LogOut, Building2, FolderTree
+  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ChevronRight, LogOut, Building2, FolderTree, ShieldCheck
 } from "lucide-react";
 
 import AdminStores from "./admin/AdminStores";
@@ -14,10 +14,11 @@ import AdminReports from "./admin/AdminReports";
 import AdminChecklistReport from "./admin/AdminChecklistReport";
 import AdminOrganizations from "./admin/AdminOrganizations";
 import AdminGroups from "./admin/AdminGroups";
+import AdminUsuarios from "./admin/AdminUsuarios";
 
 export default function AdminArea() {
   const navigate = useNavigate();
-  const { adminUser, orgId, isSuperAdmin, isHoldingOwner, signOut, orgName } = useAuth();
+  const { adminUser, orgId, groupId, isSuperAdmin, isHoldingOwner, isGroupDirector, signOut, orgName } = useAuth();
 
   const [screen, setScreen] = useState('menu');
   const [lojas, setLojas] = useState([]);
@@ -26,7 +27,7 @@ export default function AdminArea() {
 
   useEffect(() => {
     buscarDadosGlobais();
-  }, [orgId]);
+  }, [orgId, groupId]);
 
   async function buscarDadosGlobais() {
     setLoading(true);
@@ -37,6 +38,11 @@ export default function AdminArea() {
     if (orgId) {
       qLojas = qLojas.eq('organization_id', orgId);
       qRoles = qRoles.eq('organization_id', orgId);
+    }
+
+    // group_director enxerga apenas as lojas do seu grupo
+    if (isGroupDirector && groupId) {
+      qLojas = qLojas.eq('restaurant_group_id', groupId);
     }
 
     const { data: l } = await qLojas;
@@ -63,6 +69,7 @@ export default function AdminArea() {
     relatorios: 'Painel BI',
     organizacoes: 'Organizações',
     grupos: 'Grupos',
+    usuarios: 'Usuários',
   };
 
   return (
@@ -96,8 +103,8 @@ export default function AdminArea() {
         {/* MENU PRINCIPAL */}
         {screen === 'menu' && (
           <div className="animate-fade-in">
-            {/* Cards de gestao da plataforma (super admin / holding owner) */}
-            {(isSuperAdmin || isHoldingOwner) && (
+            {/* Cards de gestao da plataforma (super admin / holding owner / group director) */}
+            {(isSuperAdmin || isHoldingOwner || isGroupDirector) && (
               <div className="mb-6">
                 <h2 className="text-xs font-bold uppercase text-slate-400 mb-3 tracking-wide">Plataforma</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6">
@@ -106,8 +113,13 @@ export default function AdminArea() {
                       <Building2 size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Organizações</span>
                     </button>
                   )}
-                  <button onClick={() => setScreen('grupos')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-violet-50 border border-slate-200 hover:border-violet-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-violet-600">
-                    <FolderTree size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Grupos</span>
+                  {(isSuperAdmin || isHoldingOwner) && (
+                    <button onClick={() => setScreen('grupos')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-violet-50 border border-slate-200 hover:border-violet-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-violet-600">
+                      <FolderTree size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Grupos</span>
+                    </button>
+                  )}
+                  <button onClick={() => setScreen('usuarios')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-rose-50 border border-slate-200 hover:border-rose-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-rose-600">
+                    <ShieldCheck size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Usuários</span>
                   </button>
                 </div>
               </div>
@@ -142,6 +154,16 @@ export default function AdminArea() {
 
         {screen === 'organizacoes' && isSuperAdmin && <AdminOrganizations goBack={goBack} />}
         {screen === 'grupos' && <AdminGroups goBack={goBack} orgId={orgId} isSuperAdmin={isSuperAdmin} />}
+        {screen === 'usuarios' && (isSuperAdmin || isHoldingOwner || isGroupDirector) && (
+          <AdminUsuarios
+            goBack={goBack}
+            orgId={orgId}
+            groupId={groupId}
+            isSuperAdmin={isSuperAdmin}
+            isHoldingOwner={isHoldingOwner}
+            isGroupDirector={isGroupDirector}
+          />
+        )}
 
         {screen === 'lojas' && <AdminStores goBack={goBack} lojas={lojas} onUpdate={buscarDadosGlobais} orgId={orgId} />}
         {screen === 'colaboradores' && <AdminEmployees goBack={goBack} lojas={lojas} roles={roles} onUpdate={buscarDadosGlobais} initialTab="colaboradores" orgId={orgId} />}

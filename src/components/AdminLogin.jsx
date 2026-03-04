@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, LogIn, ArrowLeft, Send, KeyRound, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
-  const { signIn, resetPassword, updatePassword, passwordRecovery } = useAuth();
+  const { adminUser, signIn, resetPassword, updatePassword, passwordRecovery, getHomeRoute } = useAuth();
+
+  // Redireciona para a tela correta de acordo com o role do usuário
+  useEffect(() => {
+    if (adminUser) {
+      navigate(getHomeRoute(), { replace: true });
+    }
+  }, [adminUser, navigate]);
 
   // View: 'login' | 'forgot' | 'reset'
   const [view, setView] = useState('login');
@@ -41,7 +48,7 @@ export default function AdminLogin() {
 
     try {
       await signIn(email, password, rememberMe);
-      navigate('/admin');
+      // Navegação feita pelo useEffect quando adminUser for atualizado
     } catch {
       setError('Email ou senha incorretos');
     } finally {

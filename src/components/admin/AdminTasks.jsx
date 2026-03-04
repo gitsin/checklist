@@ -57,13 +57,13 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
         }
 
         // Cargos
-        const { data: emps } = await supabase.from("employee").select("role_id").eq("store_id", lojaId).eq("active", true);
-        const rIds = [...new Set(emps?.map(e => e.role_id) || [])];
+        const { data: emps } = await supabase.from("user_profiles").select("role_id").eq("store_id", lojaId).eq("active", true);
+        const rIds = [...new Set(emps?.map(e => e.role_id).filter(Boolean) || [])];
         if (rIds.length > 0) {
             const rolesFiltrados = roles.filter(r => rIds.includes(r.id) && r.active);
             setCargosFiltroDisponiveis(rolesFiltrados);
         } else {
-            setCargosFiltroDisponiveis([]);
+            setCargosFiltroDisponiveis(roles.filter(r => r.active));
         }
 
         // Rotinas
@@ -105,13 +105,14 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
 
     async function carregarCargosParaModal(lojaId) {
         if (!lojaId) { setCargosDisponiveis([]); return; }
-        const { data: emps } = await supabase.from("employee").select("role_id").eq("store_id", lojaId).eq("active", true);
-        const rIds = [...new Set(emps?.map(e => e.role_id) || [])];
+        const { data: emps } = await supabase.from("user_profiles").select("role_id").eq("store_id", lojaId).eq("active", true);
+        const rIds = [...new Set(emps?.map(e => e.role_id).filter(Boolean) || [])];
         if (rIds.length > 0) {
             const rolesFiltrados = roles.filter(r => rIds.includes(r.id) && r.active);
             setCargosDisponiveis(rolesFiltrados);
         } else {
-            setCargosDisponiveis([]);
+            // Nenhum colaborador na loja ainda — exibe todos os cargos ativos
+            setCargosDisponiveis(roles.filter(r => r.active));
         }
     }
 
@@ -380,7 +381,7 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
                         <button onClick={() => setModalImportarOpen(true)} className="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-sm hover:shadow"><FileUp size={16} /> Importar</button>
                         <button onClick={gerarRotina} disabled={gerandoRotina} className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-emerald-600 hover:to-green-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97] disabled:opacity-50"><PlayCircle size={16} /> {gerandoRotina ? '...' : 'Gerar'}</button>
                         <button onClick={() => setWizardOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-indigo-600 hover:to-purple-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Sparkles size={16} /> Assistente de Criação de Tarefas</button>
-                        <button onClick={() => { setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: "", cargo: "", hora: "", foto: false, notifyWhatsapp: false }); setCargosDisponiveis([]); setRotinasDisponiveis([]); setNovaTarefaRotina(""); setModalNovaTarefaOpen(true); }} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-purple-600 hover:to-violet-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Plus size={16} /> Criar Tarefa</button>
+                        <button onClick={() => { const lojasAtivas = lojas.filter(l => l.active); const defaultLoja = lojasAtivas.length === 1 ? lojasAtivas[0].id : ""; setNovaTarefa({ titulo: "", desc: "", freq: "daily", loja: defaultLoja, cargo: "", hora: "", foto: false, notifyWhatsapp: false }); if (defaultLoja) { carregarCargosParaModal(defaultLoja); carregarRotinasParaModal(defaultLoja); } else { setCargosDisponiveis([]); setRotinasDisponiveis([]); } setNovaTarefaRotina(""); setModalNovaTarefaOpen(true); }} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-purple-600 hover:to-violet-700 flex gap-2 items-center text-sm min-h-[44px] transition-all shadow-md hover:shadow-lg active:scale-[0.97]"><Plus size={16} /> Criar Tarefa</button>
                     </div>
                 </div>
 
@@ -520,7 +521,7 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Loja</label>
-                                    <select className="border p-2 w-full rounded bg-white" onChange={e => { const id = e.target.value; setNovaTarefa({ ...novaTarefa, loja: id }); carregarCargosParaModal(id); carregarRotinasParaModal(id); setNovaTarefaRotina(""); }}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                                    <select className="border p-2 w-full rounded bg-white" value={novaTarefa.loja} onChange={e => { const id = e.target.value; setNovaTarefa({ ...novaTarefa, loja: id }); carregarCargosParaModal(id); carregarRotinasParaModal(id); setNovaTarefaRotina(""); }}><option value="">Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cargo</label>

@@ -1,18 +1,36 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
-import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, ShieldCheck, User, Phone } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, ShieldCheck, User, Phone, Mail, Hash, KeyRound, Building2 } from "lucide-react";
 
-// Adicionei a prop 'initialTab' aqui embaixo
-export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initialTab = 'colaboradores', orgId }) {
+function isValidEmail(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
 
-    // O estado inicial agora respeita o que foi pedido (Cargos ou Colaboradores)
+const ACCESS_LEVEL_LABELS = {
+    kiosk: { label: "Kiosk", color: "bg-slate-100 text-slate-600", badge: "border-slate-400" },
+    store_manager: { label: "Gerente de Loja", color: "bg-blue-100 text-blue-700", badge: "border-blue-500" },
+    group_director: { label: "Diretor de Grupo", color: "bg-violet-100 text-violet-700", badge: "border-violet-500" },
+    holding_owner: { label: "Holding Owner", color: "bg-amber-100 text-amber-700", badge: "border-amber-500" },
+};
+
+function AccessLevelBadge({ level }) {
+    const info = ACCESS_LEVEL_LABELS[level] || ACCESS_LEVEL_LABELS.kiosk;
+    return (
+        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${info.color}`}>
+            {info.label}
+        </span>
+    );
+}
+
+export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initialTab = 'colaboradores', orgId, isSuperAdmin }) {
     const [activeTab, setActiveTab] = useState(initialTab);
 
     // --- Estados: Cargos ---
     const [novoCargoNome, setNovoCargoNome] = useState("");
+    const [novoCargoAccessLevel, setNovoCargoAccessLevel] = useState("kiosk");
     const [modalEditarCargoOpen, setModalEditarCargoOpen] = useState(false);
     const [cargoEmEdicao, setCargoEmEdicao] = useState(null);
-    const [editCargoData, setEditCargoData] = useState({ name: "" });
+    const [editCargoData, setEditCargoData] = useState({ name: "", access_level: "kiosk" });
 
     // --- Estados: Colaboradores ---
     const [listaFuncionarios, setListaFuncionarios] = useState([]);
@@ -23,15 +41,24 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
 
     const [modalNovoColabOpen, setModalNovoColabOpen] = useState(false);
     const [modalEditarColabOpen, setModalEditarColabOpen] = useState(false);
-    const [novoColab, setNovoColab] = useState({ nome: "", loja: "", cargo: "", gestor: "", phone: "" });
-    const [editColab, setEditColab] = useState({ id: null, nome: "", loja: "", cargo: "", gestor: "", phone: "" });
+    const [novoColab, setNovoColab] = useState({ nome: "", loja: "", cargo: "", cargoAccessLevel: "kiosk", gestor: "", phone: "", email: "", pin: "" });
+    const [editColab, setEditColab] = useState({ id: null, nome: "", loja: "", cargo: "", cargoAccessLevel: "kiosk", gestor: "", phone: "", email: "", pin: "" });
+    const [salvando, setSalvando] = useState(false);
+    const [erroSalvar, setErroSalvar] = useState("");
 
     // --- Lógica: Cargos ---
     async function criarCargo() {
         if (!novoCargoNome) return alert("Preencha o nome do cargo");
         const slugAuto = novoCargoNome.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        const { error } = await supabase.from("roles").insert({ name: novoCargoNome, slug: slugAuto, active: true, organization_id: orgId });
-        if (error) alert(error.message); else { setNovoCargoNome(""); onUpdate(); }
+        const { error } = await supabase.from("roles").insert({
+            name: novoCargoNome,
+            slug: slugAuto,
+            active: true,
+            organization_id: orgId,
+            access_level: novoCargoAccessLevel,
+        });
+        if (error) alert(error.message);
+        else { setNovoCargoNome(""); setNovoCargoAccessLevel("kiosk"); onUpdate(); }
     }
 
     async function toggleStatusCargo(cargo) {
@@ -41,14 +68,18 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
 
     function abrirModalEditarCargo(cargo) {
         setCargoEmEdicao(cargo);
-        setEditCargoData({ name: cargo.name || "" });
+        setEditCargoData({ name: cargo.name || "", access_level: cargo.access_level || "kiosk" });
         setModalEditarCargoOpen(true);
     }
 
     async function salvarEdicaoCargo() {
         if (!editCargoData.name) return alert("Preencha o nome do cargo");
-        const { error } = await supabase.from("roles").update({ name: editCargoData.name }).eq("id", cargoEmEdicao.id);
-        if (error) alert(error.message); else { setModalEditarCargoOpen(false); onUpdate(); }
+        const { error } = await supabase.from("roles").update({
+            name: editCargoData.name,
+            access_level: editCargoData.access_level,
+        }).eq("id", cargoEmEdicao.id);
+        if (error) alert(error.message);
+        else { setModalEditarCargoOpen(false); onUpdate(); }
     }
 
     // --- Lógica: Colaboradores ---
@@ -57,7 +88,12 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
     }, [activeTab, filtroLoja, filtroCargo, filtroGestor]);
 
     async function buscarColaboradores() {
-        let q = supabase.from("employee").select(`*, stores(name), roles(name), manager:manager_id(full_name)`).order('full_name');
+        let q = supabase
+            .from("user_profiles")
+            .select(`*, stores(name), roles(name, access_level), manager:manager_id(full_name)`)
+            .in("user_type", ["colaborador", "store_manager"])
+            .order('full_name');
+        if (orgId) q = q.eq('organization_id', orgId);
         if (filtroLoja) q = q.eq('store_id', filtroLoja);
         if (filtroCargo) q = q.eq('role_id', filtroCargo);
         if (filtroGestor) q = q.eq('manager_id', filtroGestor);
@@ -67,75 +103,202 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
 
     async function carregarGestores(lojaId) {
         if (!lojaId) { setListaGestores([]); return; }
-        const { data } = await supabase.from("employee").select("id, full_name").eq("store_id", lojaId).eq("active", true);
+        const { data } = await supabase
+            .from("user_profiles")
+            .select("id, full_name")
+            .eq("store_id", lojaId)
+            .in("user_type", ["colaborador", "store_manager"])
+            .eq("active", true)
+            .order("full_name");
         setListaGestores(data || []);
     }
 
+    function getCargoAccessLevel(cargoId) {
+        const cargo = roles.find(r => r.id === cargoId);
+        return cargo?.access_level || "kiosk";
+    }
+
     async function salvarNovoColaborador() {
-        if (!novoColab.nome || !novoColab.loja || !novoColab.cargo) return alert("Campos obrigatórios");
-        const { error } = await supabase.from("employee").insert({
-            full_name: novoColab.nome, store_id: novoColab.loja, role_id: novoColab.cargo, manager_id: novoColab.gestor || null, phone: novoColab.phone || null, active: true, organization_id: orgId
+        setErroSalvar("");
+        if (!novoColab.nome || !novoColab.loja || !novoColab.cargo) {
+            setErroSalvar("Preencha os campos obrigatórios: nome, loja e cargo.");
+            return;
+        }
+        if (novoColab.email && !isValidEmail(novoColab.email)) {
+            setErroSalvar("Formato de email inválido.");
+            return;
+        }
+        if (novoColab.pin && (novoColab.pin.length !== 4 || !/^\d{4}$/.test(novoColab.pin))) {
+            setErroSalvar("O PIN deve ter exatamente 4 dígitos numéricos.");
+            return;
+        }
+
+        setSalvando(true);
+        const { error } = await supabase.from("user_profiles").insert({
+            full_name: novoColab.nome,
+            store_id: novoColab.loja,
+            role_id: novoColab.cargo,
+            manager_id: novoColab.gestor || null,
+            phone: novoColab.phone || null,
+            email: novoColab.email || null,
+            pin_code: novoColab.pin || null,
+            active: true,
+            organization_id: orgId,
+            user_type: "colaborador",
+            auth_user_id: null,
         });
-        if (error) alert(error.message); else { setModalNovoColabOpen(false); buscarColaboradores(); }
+        setSalvando(false);
+        if (error) {
+            setErroSalvar("Um erro ocorreu, por favor tente novamente.");
+        } else {
+            setModalNovoColabOpen(false);
+            buscarColaboradores();
+        }
     }
 
     async function salvarEdicaoColaborador() {
-        const { error } = await supabase.from("employee").update({
-            full_name: editColab.nome, store_id: editColab.loja, role_id: editColab.cargo, manager_id: editColab.gestor || null, phone: editColab.phone || null
+        setErroSalvar("");
+        if (editColab.email && !isValidEmail(editColab.email)) {
+            setErroSalvar("Formato de email inválido.");
+            return;
+        }
+        if (editColab.pin && (editColab.pin.length !== 4 || !/^\d{4}$/.test(editColab.pin))) {
+            setErroSalvar("O PIN deve ter exatamente 4 dígitos numéricos.");
+            return;
+        }
+
+        setSalvando(true);
+        const { error } = await supabase.from("user_profiles").update({
+            full_name: editColab.nome,
+            store_id: editColab.loja,
+            role_id: editColab.cargo,
+            manager_id: editColab.gestor || null,
+            phone: editColab.phone || null,
+            email: editColab.email || null,
+            pin_code: editColab.pin || null,
         }).eq("id", editColab.id);
-        if (error) alert(error.message); else { setModalEditarColabOpen(false); buscarColaboradores(); }
+        setSalvando(false);
+        if (error) {
+            setErroSalvar("Um erro ocorreu, por favor tente novamente.");
+        } else {
+            setModalEditarColabOpen(false);
+            buscarColaboradores();
+        }
     }
 
     async function toggleStatusColaborador(func) {
-        await supabase.from("employee").update({ active: !func.active }).eq("id", func.id);
+        await supabase.from("user_profiles").update({ active: !func.active }).eq("id", func.id);
         buscarColaboradores();
     }
 
     return (
         <div className="animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-                <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group"><ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar</button>
+                <button onClick={goBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 font-semibold transition-colors min-h-[44px] group">
+                    <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar
+                </button>
                 <div className="flex gap-1 bg-slate-200 p-1 rounded-xl">
                     <button onClick={() => setActiveTab('colaboradores')} className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'colaboradores' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}>Colaboradores</button>
                     <button onClick={() => setActiveTab('cargos')} className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'cargos' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-white'}`}>Cargos</button>
                 </div>
             </div>
 
+            {/* ── TAB CARGOS ── */}
             {activeTab === 'cargos' && (
                 <div className="animate-fade-in">
                     <div className="bg-white p-6 rounded-xl mb-8 border border-slate-200 shadow-sm">
                         <h3 className="text-xl font-bold mb-4 text-slate-800">Adicionar Cargo</h3>
                         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                            <input type="text" placeholder="Nome" className="flex-1 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={novoCargoNome} onChange={(e) => setNovoCargoNome(e.target.value)} />
-                            <button onClick={criarCargo} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-blue-700 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto shadow-md hover:shadow-lg transition-all active:scale-[0.97]"><Plus size={18} /> Criar</button>
+                            <input
+                                type="text"
+                                placeholder="Nome do cargo"
+                                className="flex-1 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors"
+                                value={novoCargoNome}
+                                onChange={(e) => setNovoCargoNome(e.target.value)}
+                            />
+                            <select
+                                className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors"
+                                value={novoCargoAccessLevel}
+                                onChange={e => setNovoCargoAccessLevel(e.target.value)}
+                            >
+                                <option value="kiosk">Kiosk</option>
+                                <option value="store_manager">Gerente de Loja</option>
+                                <option value="group_director">Diretor de Grupo</option>
+                                <option value="holding_owner">Holding Owner</option>
+                            </select>
+                            <button onClick={criarCargo} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-blue-700 font-bold flex items-center justify-center gap-2 min-h-[48px] w-full sm:w-auto shadow-md hover:shadow-lg transition-all active:scale-[0.97]">
+                                <Plus size={18} /> Criar
+                            </button>
                         </div>
                     </div>
                     <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-                        {roles.map(cargo => (
-                            <div key={cargo.id} className={`p-4 rounded-lg flex justify-between items-center border-l-8 ${cargo.active ? 'bg-white text-slate-800 border-green-500' : 'bg-slate-300 text-slate-500 border-slate-500'}`}>
-                                <div><span className="font-bold text-lg block">{cargo.name}</span></div>
-                                <div className="flex gap-2 items-center">
-                                    <button onClick={() => abrirModalEditarCargo(cargo)} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Pencil size={18} /></button>
-                                    <button onClick={() => toggleStatusCargo(cargo)}>{cargo.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}</button>
+                        {roles.map(cargo => {
+                            const accessInfo = ACCESS_LEVEL_LABELS[cargo.access_level] || ACCESS_LEVEL_LABELS.kiosk;
+                            return (
+                                <div key={cargo.id} className={`p-4 rounded-lg flex justify-between items-center border-l-8 ${cargo.active ? `bg-white text-slate-800 ${accessInfo.badge}` : 'bg-slate-300 text-slate-500 border-slate-500'}`}>
+                                    <div>
+                                        <span className="font-bold text-lg block">{cargo.name}</span>
+                                        {cargo.active && <AccessLevelBadge level={cargo.access_level} />}
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        <button onClick={() => abrirModalEditarCargo(cargo)} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors">
+                                            <Pencil size={18} />
+                                        </button>
+                                        <button onClick={() => toggleStatusCargo(cargo)}>
+                                            {cargo.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
+            {/* ── TAB COLABORADORES ── */}
             {activeTab === 'colaboradores' && (
                 <div className="animate-fade-in">
                     <div className="flex justify-end mb-4">
-                        <button onClick={() => { setNovoColab({ nome: "", loja: "", cargo: "", gestor: "", phone: "" }); setModalNovoColabOpen(true); }} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg flex items-center gap-2 transition-all active:scale-[0.97]"><Plus size={16} /> Novo Colaborador</button>
+                        <button
+                            onClick={() => {
+                                setNovoColab({ nome: "", loja: "", cargo: "", cargoAccessLevel: "kiosk", gestor: "", phone: "", email: "", pin: "" });
+                                setErroSalvar("");
+                                setModalNovoColabOpen(true);
+                            }}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg flex items-center gap-2 transition-all active:scale-[0.97]"
+                        >
+                            <Plus size={16} /> Novo Colaborador
+                        </button>
                     </div>
 
+                    {/* Filtros */}
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-6 bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Loja</label><select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroLoja} onChange={e => setFiltroLoja(e.target.value)}><option value="">Todas</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-                        <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Cargo</label><select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroCargo} onChange={e => setFiltroCargo(e.target.value)}><option value="">Todos</option>{roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
-                        <div className="flex-1"><label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Gestor</label><select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroGestor} onChange={e => setFiltroGestor(e.target.value)}><option value="">Todos</option>{[...new Set(listaFuncionarios.filter(f => f.manager_id).map(f => f.manager_id))].map(mid => { const g = listaFuncionarios.find(x => x.id === mid) || listaFuncionarios.find(x => x.manager_id === mid)?.manager; return g ? <option key={mid} value={mid}>{g.full_name}</option> : null })}</select></div>
+                        <div className="flex-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Loja</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroLoja} onChange={e => setFiltroLoja(e.target.value)}>
+                                <option value="">Todas</option>
+                                {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Cargo</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroCargo} onChange={e => setFiltroCargo(e.target.value)}>
+                                <option value="">Todos</option>
+                                {roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Gestor</label>
+                            <select className="bg-slate-50 p-2 rounded-lg w-full border border-slate-200 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors" value={filtroGestor} onChange={e => setFiltroGestor(e.target.value)}>
+                                <option value="">Todos</option>
+                                {[...new Map(listaFuncionarios.filter(f => f.manager).map(f => [f.manager_id, f.manager])).entries()].map(([mid, g]) => (
+                                    <option key={mid} value={mid}>{g.full_name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
+                    {/* Lista */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {listaFuncionarios.map(f => (
                             <div key={f.id} className={`p-4 rounded border-l-4 flex justify-between items-center ${f.active ? 'bg-white border-green-500 text-slate-800' : 'bg-slate-300 border-slate-500 text-slate-500'}`}>
@@ -146,14 +309,31 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                                     <div>
                                         <div className="font-bold text-lg">{f.full_name}</div>
                                         <div className="text-xs uppercase font-bold text-slate-500">{f.stores?.name} • {f.roles?.name}</div>
+                                        {f.roles?.access_level && f.active && (
+                                            <div className="mt-1"><AccessLevelBadge level={f.roles.access_level} /></div>
+                                        )}
                                         {f.phone && <div className="text-xs text-green-600 mt-1 flex gap-1 items-center bg-green-50 px-2 py-0.5 rounded-full w-fit"><Phone size={10} /> {f.phone}</div>}
+                                        {f.email && <div className="text-xs text-slate-500 mt-1 flex gap-1 items-center bg-slate-100 px-2 py-0.5 rounded-full w-fit"><Mail size={10} /> {f.email}</div>}
+                                        {f.pin_code && <div className="text-xs text-violet-600 mt-1 flex gap-1 items-center bg-violet-50 px-2 py-0.5 rounded-full w-fit"><Hash size={10} /> PIN configurado</div>}
                                         {f.manager && <div className="text-xs text-blue-600 mt-1 flex gap-1 items-center bg-blue-50 px-2 py-0.5 rounded-full w-fit"><ShieldCheck size={12} /> Gestor: {f.manager.full_name}</div>}
                                     </div>
                                 </div>
-
                                 <div className="flex gap-2 items-center">
-                                    <button onClick={() => { setEditColab({ id: f.id, nome: f.full_name, loja: f.store_id, cargo: f.role_id, gestor: f.manager_id || "", phone: f.phone || "" }); carregarGestores(f.store_id); setModalEditarColabOpen(true); }} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"><Pencil size={18} /></button>
-                                    <button onClick={() => toggleStatusColaborador(f)}>{f.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}</button>
+                                    <button
+                                        onClick={() => {
+                                            const accessLevel = getCargoAccessLevel(f.role_id);
+                                            setEditColab({ id: f.id, nome: f.full_name, loja: f.store_id, cargo: f.role_id, cargoAccessLevel: accessLevel, gestor: f.manager_id || "", phone: f.phone || "", email: f.email || "", pin: f.pin_code || "" });
+                                            setErroSalvar("");
+                                            carregarGestores(f.store_id);
+                                            setModalEditarColabOpen(true);
+                                        }}
+                                        className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                                    >
+                                        <Pencil size={18} />
+                                    </button>
+                                    <button onClick={() => toggleStatusColaborador(f)}>
+                                        {f.active ? <ToggleRight className="text-green-600" size={30} /> : <ToggleLeft size={30} />}
+                                    </button>
                                 </div>
                             </div>
                         ))}
@@ -161,41 +341,220 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                 </div>
             )}
 
-            {/* MODAL NOVO COLABORADOR */}
+            {/* ── MODAL NOVO COLABORADOR ── */}
             {modalNovoColabOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white p-4 sm:p-6 rounded-lg w-full max-w-md text-slate-800 max-h-[90dvh] overflow-y-auto">
                         <h3 className="font-bold text-xl mb-4">Novo Colaborador</h3>
-                        <input className="border p-2 w-full mb-3 rounded" placeholder="Nome" value={novoColab.nome} onChange={e => setNovoColab({ ...novoColab, nome: e.target.value })} />
-                        <select className="border p-2 w-full mb-3 rounded" onChange={e => { setNovoColab({ ...novoColab, loja: e.target.value }); carregarGestores(e.target.value) }}><option value="">Loja...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                        <select className="border p-2 w-full mb-3 rounded" onChange={e => setNovoColab({ ...novoColab, cargo: e.target.value })}><option value="">Cargo...</option>{roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
-                        <select className="border p-2 w-full mb-3 rounded" onChange={e => setNovoColab({ ...novoColab, gestor: e.target.value })} disabled={!novoColab.loja}><option value="">Sem Gestor...</option>{listaGestores.map(g => <option key={g.id} value={g.id}>{g.full_name}</option>)}</select>
-                        <input className="border p-2 w-full mb-4 rounded" placeholder="Telefone (ex: +5511999999999)" value={novoColab.phone} onChange={e => setNovoColab({ ...novoColab, phone: e.target.value })} />
-                        <button onClick={salvarNovoColaborador} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar</button>
+
+                        <input
+                            className="border p-2 w-full mb-3 rounded"
+                            placeholder="Nome *"
+                            value={novoColab.nome}
+                            onChange={e => setNovoColab({ ...novoColab, nome: e.target.value })}
+                        />
+
+                        <select
+                            className="border p-2 w-full mb-3 rounded"
+                            value={novoColab.loja}
+                            onChange={e => { setNovoColab({ ...novoColab, loja: e.target.value }); carregarGestores(e.target.value); }}
+                        >
+                            <option value="">Loja *</option>
+                            {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+
+                        <select
+                            className="border p-2 w-full mb-3 rounded"
+                            value={novoColab.cargo}
+                            onChange={e => {
+                                const al = getCargoAccessLevel(e.target.value);
+                                setNovoColab({ ...novoColab, cargo: e.target.value, cargoAccessLevel: al });
+                            }}
+                        >
+                            <option value="">Cargo *</option>
+                            {roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </select>
+
+                        {/* Badge indicativo do tipo de acesso */}
+                        {novoColab.cargo && (
+                            <div className="mb-3 flex items-center gap-2 text-sm">
+                                <span className="text-slate-500">Nível de acesso:</span>
+                                <AccessLevelBadge level={novoColab.cargoAccessLevel} />
+                            </div>
+                        )}
+
+                        <select
+                            className="border p-2 w-full mb-3 rounded"
+                            value={novoColab.gestor}
+                            onChange={e => setNovoColab({ ...novoColab, gestor: e.target.value })}
+                            disabled={!novoColab.loja}
+                        >
+                            <option value="">Sem Gestor</option>
+                            {listaGestores.map(g => <option key={g.id} value={g.id}>{g.full_name}</option>)}
+                        </select>
+
+                        <input
+                            className="border p-2 w-full mb-3 rounded"
+                            placeholder="Telefone (ex: +5511999999999)"
+                            value={novoColab.phone}
+                            onChange={e => setNovoColab({ ...novoColab, phone: e.target.value })}
+                        />
+
+                        <div className="mb-3">
+                            <div className="relative">
+                                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="email"
+                                    className={`border p-2 pl-9 w-full rounded ${novoColab.email && !isValidEmail(novoColab.email) ? 'border-red-400 bg-red-50' : ''} focus:outline-none focus:ring-2 focus:ring-blue-400`}
+                                    placeholder="Email (opcional)"
+                                    value={novoColab.email}
+                                    onChange={e => setNovoColab({ ...novoColab, email: e.target.value })}
+                                />
+                            </div>
+                            {novoColab.email && !isValidEmail(novoColab.email) && (
+                                <p className="text-red-500 text-xs mt-1 font-medium">Formato de email inválido</p>
+                            )}
+                        </div>
+
+                        {/* PIN — apenas para kiosk */}
+                        {novoColab.cargoAccessLevel === 'kiosk' && (
+                            <div className="mb-4">
+                                <div className="relative">
+                                    <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        className="border p-2 pl-9 w-full rounded focus:outline-none focus:ring-2 focus:ring-violet-400"
+                                        placeholder="PIN de 4 dígitos (opcional)"
+                                        value={novoColab.pin}
+                                        onChange={e => setNovoColab({ ...novoColab, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-1">Se definido, colaborador precisará digitar o PIN ao entrar.</p>
+                            </div>
+                        )}
+
+                        {erroSalvar && <p className="text-red-500 text-sm mb-3 font-medium">{erroSalvar}</p>}
+
+                        <button
+                            onClick={salvarNovoColaborador}
+                            disabled={salvando}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98] disabled:opacity-50"
+                        >
+                            {salvando ? "Salvando..." : "Salvar"}
+                        </button>
                         <button onClick={() => setModalNovoColabOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
 
-            {/* MODAL EDITAR COLABORADOR */}
+            {/* ── MODAL EDITAR COLABORADOR ── */}
             {modalEditarColabOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white p-4 sm:p-6 rounded-lg w-full max-w-md text-slate-800 max-h-[90dvh] overflow-y-auto">
                         <h3 className="font-bold text-xl mb-4">Editar Colaborador</h3>
-                        <div className="mb-3"><label className="text-xs font-bold uppercase text-slate-500">Nome</label><input className="border p-2 w-full rounded" value={editColab.nome} onChange={e => setEditColab({ ...editColab, nome: e.target.value })} /></div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
-                            <div><label className="text-xs font-bold uppercase text-slate-500">Loja</label><select className="border p-2 w-full rounded" value={editColab.loja} onChange={e => { setEditColab({ ...editColab, loja: e.target.value }); carregarGestores(e.target.value) }}><option>Selecione...</option>{lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-                            <div><label className="text-xs font-bold uppercase text-slate-500">Cargo</label><select className="border p-2 w-full rounded" value={editColab.cargo} onChange={e => setEditColab({ ...editColab, cargo: e.target.value })}><option>Selecione...</option>{roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+
+                        <div className="mb-3">
+                            <label className="text-xs font-bold uppercase text-slate-500">Nome</label>
+                            <input className="border p-2 w-full rounded" value={editColab.nome} onChange={e => setEditColab({ ...editColab, nome: e.target.value })} />
                         </div>
-                        <div className="mb-3"><label className="text-xs font-bold uppercase text-slate-500">Gestor</label><select className="border p-2 w-full rounded" value={editColab.gestor} onChange={e => setEditColab({ ...editColab, gestor: e.target.value })}><option value="">Sem Gestor</option>{listaGestores.filter(g => g.id !== editColab.id).map(g => <option key={g.id} value={g.id}>{g.full_name}</option>)}</select></div>
-                        <div className="mb-4"><label className="text-xs font-bold uppercase text-slate-500">Telefone</label><input className="border p-2 w-full rounded" placeholder="+5511999999999" value={editColab.phone} onChange={e => setEditColab({ ...editColab, phone: e.target.value })} /></div>
-                        <button onClick={salvarEdicaoColaborador} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500">Loja</label>
+                                <select className="border p-2 w-full rounded" value={editColab.loja} onChange={e => { setEditColab({ ...editColab, loja: e.target.value }); carregarGestores(e.target.value); }}>
+                                    <option value="">Selecione...</option>
+                                    {lojas.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold uppercase text-slate-500">Cargo</label>
+                                <select
+                                    className="border p-2 w-full rounded"
+                                    value={editColab.cargo}
+                                    onChange={e => {
+                                        const al = getCargoAccessLevel(e.target.value);
+                                        setEditColab({ ...editColab, cargo: e.target.value, cargoAccessLevel: al });
+                                    }}
+                                >
+                                    <option value="">Selecione...</option>
+                                    {roles.filter(r => r.active).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                        {editColab.cargo && (
+                            <div className="mb-3 flex items-center gap-2 text-sm">
+                                <span className="text-slate-500">Nível de acesso:</span>
+                                <AccessLevelBadge level={editColab.cargoAccessLevel} />
+                            </div>
+                        )}
+
+                        <div className="mb-3">
+                            <label className="text-xs font-bold uppercase text-slate-500">Gestor</label>
+                            <select className="border p-2 w-full rounded" value={editColab.gestor} onChange={e => setEditColab({ ...editColab, gestor: e.target.value })}>
+                                <option value="">Sem Gestor</option>
+                                {listaGestores.filter(g => g.id !== editColab.id).map(g => <option key={g.id} value={g.id}>{g.full_name}</option>)}
+                            </select>
+                        </div>
+
+                        <div className="mb-3">
+                            <label className="text-xs font-bold uppercase text-slate-500">Telefone</label>
+                            <input className="border p-2 w-full rounded" placeholder="+5511999999999" value={editColab.phone} onChange={e => setEditColab({ ...editColab, phone: e.target.value })} />
+                        </div>
+
+                        <div className="mb-3">
+                            <label className="text-xs font-bold uppercase text-slate-500">Email</label>
+                            <div className="relative mt-1">
+                                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="email"
+                                    className={`border p-2 pl-9 w-full rounded ${editColab.email && !isValidEmail(editColab.email) ? 'border-red-400 bg-red-50' : ''} focus:outline-none focus:ring-2 focus:ring-blue-400`}
+                                    placeholder="Email (opcional)"
+                                    value={editColab.email}
+                                    onChange={e => setEditColab({ ...editColab, email: e.target.value })}
+                                />
+                            </div>
+                            {editColab.email && !isValidEmail(editColab.email) && (
+                                <p className="text-red-500 text-xs mt-1 font-medium">Formato de email inválido</p>
+                            )}
+                        </div>
+
+                        {/* PIN — apenas para kiosk */}
+                        {editColab.cargoAccessLevel === 'kiosk' && (
+                            <div className="mb-4">
+                                <label className="text-xs font-bold uppercase text-slate-500">PIN (4 dígitos)</label>
+                                <div className="relative mt-1">
+                                    <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        className="border p-2 pl-9 w-full rounded focus:outline-none focus:ring-2 focus:ring-violet-400"
+                                        placeholder="Deixe vazio para sem PIN"
+                                        value={editColab.pin}
+                                        onChange={e => setEditColab({ ...editColab, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {erroSalvar && <p className="text-red-500 text-sm mb-3 font-medium">{erroSalvar}</p>}
+
+                        <button
+                            onClick={salvarEdicaoColaborador}
+                            disabled={salvando}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98] disabled:opacity-50"
+                        >
+                            {salvando ? "Salvando..." : "Salvar Alterações"}
+                        </button>
                         <button onClick={() => setModalEditarColabOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
                     </div>
                 </div>
             )}
 
-            {/* MODAL EDITAR CARGO (RESTAURADO) */}
+            {/* ── MODAL EDITAR CARGO ── */}
             {modalEditarCargoOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white p-4 sm:p-6 rounded-lg w-full max-w-md text-slate-800 max-h-[90dvh] overflow-y-auto">
@@ -203,6 +562,19 @@ export default function AdminEmployees({ goBack, lojas, roles, onUpdate, initial
                         <div className="mb-4">
                             <label className="block text-sm font-bold text-slate-600 mb-1">Nome do Cargo</label>
                             <input className="border p-2 w-full rounded bg-white text-slate-800" value={editCargoData.name} onChange={e => setEditCargoData({ ...editCargoData, name: e.target.value })} />
+                        </div>
+                        <div className="mb-4">
+                            <label className="block text-sm font-bold text-slate-600 mb-1">Nível de Acesso</label>
+                            <select
+                                className="border p-2 w-full rounded bg-white text-slate-800"
+                                value={editCargoData.access_level}
+                                onChange={e => setEditCargoData({ ...editCargoData, access_level: e.target.value })}
+                            >
+                                <option value="kiosk">Kiosk</option>
+                                <option value="store_manager">Gerente de Loja</option>
+                                <option value="group_director">Diretor de Grupo</option>
+                                <option value="holding_owner">Holding Owner</option>
+                            </select>
                         </div>
                         <button onClick={salvarEdicaoCargo} className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full py-3 rounded-xl font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
                         <button onClick={() => setModalEditarCargoOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
