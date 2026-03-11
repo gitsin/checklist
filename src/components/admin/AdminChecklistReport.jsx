@@ -15,7 +15,8 @@ export default function AdminChecklistReport({ goBack, lojas, allRoles }) {
 
     const { loading, reportData, daysInMonth, fetchReport } = useChecklistReport();
 
-    // Load roles disponíveis para a loja selecionada (baseado nos funcionários ativos da loja)
+    // Carrega cargos disponíveis para a loja selecionada
+    // Fonte: task_templates da loja (sem depender de RLS de user_profiles)
     useEffect(() => {
         async function fetchRoles() {
             if (!filterStore) {
@@ -24,15 +25,15 @@ export default function AdminChecklistReport({ goBack, lojas, allRoles }) {
                 return;
             }
 
-            // Busca os role_ids distintos de colaboradores ativos na loja
-            const { data: empData } = await supabase
-                .from('user_profiles')
+            // Busca role_ids distintos das tarefas ativas da loja
+            const { data: taskData } = await supabase
+                .from('task_templates')
                 .select('role_id')
                 .eq('store_id', filterStore)
                 .eq('active', true)
                 .not('role_id', 'is', null);
 
-            const roleIds = [...new Set((empData || []).map(e => e.role_id).filter(Boolean))];
+            const roleIds = [...new Set((taskData || []).map(t => t.role_id).filter(Boolean))];
 
             if (roleIds.length === 0) {
                 setRoles([]);
@@ -40,15 +41,20 @@ export default function AdminChecklistReport({ goBack, lojas, allRoles }) {
                 return;
             }
 
-            // Filtra do cache allRoles os que existem na loja
+            // Busca os objetos de cargo correspondentes
             const source = (allRoles && allRoles.length > 0)
                 ? allRoles
                 : (await supabase.from('roles').select('*').order('name')).data || [];
 
             const storeRoles = source.filter(r => roleIds.includes(r.id) && r.active !== false);
 
-            setRoles(storeRoles);
-            setFilterRole(storeRoles[0]?.id || "");
+            // Fallback: se source não trouxe os cargos, busca direto por IDs
+            const finalRoles = storeRoles.length > 0
+                ? storeRoles
+                : ((await supabase.from('roles').select('*').in('id', roleIds).order('name')).data || []);
+
+            setRoles(finalRoles);
+            setFilterRole(finalRoles[0]?.id || "");
         }
 
         fetchRoles();
