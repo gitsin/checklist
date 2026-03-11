@@ -34,7 +34,7 @@ export function useChecklistReport() {
             const { data: tasksData, error: tasksErr } = await supabase
                 .from('task_templates')
                 .select(`
-          id, title,
+          id, title, created_at,
           routine_items!inner(
             routine_templates(id, title)
           )
@@ -80,6 +80,7 @@ export function useChecklistReport() {
                         routinesMap[routine.id].tasksMap[task.id] = {
                             id: task.id,
                             title: task.title,
+                            createdDate: task.created_at ? task.created_at.split('T')[0] : startDate,
                             days: {}
                         };
                     }
@@ -123,10 +124,9 @@ export function useChecklistReport() {
                                 cellStatus = 'empty';
                             }
                             cellNotes = item.notes || '';
-                        } else if (d.dateStr < today) {
-                            // No checklist item generated in the past. 
-                            // This could mean the task was inactive back then. We'll leave it empty.
-                            cellStatus = 'empty';
+                        } else if (d.dateStr < today && d.dateStr >= task.createdDate) {
+                            // Dia passado sem checklist_item mas tarefa já existia → não executada
+                            cellStatus = 'late';
                         }
 
                         task.days[d.dateStr] = { status: cellStatus, notes: cellNotes };
