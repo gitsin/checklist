@@ -88,6 +88,13 @@ export function AuthProvider({ children }) {
 
       setUserProfile(data || null);
       setOrgHeader(data?.organization_id || null);
+
+      if (!data) {
+        // Token existe no Supabase Auth mas sem profile correspondente:
+        // limpa sessão local para evitar tela de loading travada no próximo acesso
+        setSession(null);
+        supabase.auth.signOut({ scope: 'local' });
+      }
     } catch {
       setUserProfile(null);
       setOrgHeader(null);
@@ -120,11 +127,21 @@ export function AuthProvider({ children }) {
   async function signOut() {
     localStorage.removeItem('rememberMe');
     sessionStorage.removeItem('sessionActive');
-    await supabase.auth.signOut();
-    setOrgHeader(null);
-    setSession(null);
-    setUserProfile(null);
-    setPasswordRecovery(false);
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Se a chamada ao servidor falhar, remove o token local manualmente
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+          localStorage.removeItem(key);
+        }
+      }
+    } finally {
+      setOrgHeader(null);
+      setSession(null);
+      setUserProfile(null);
+      setPasswordRecovery(false);
+    }
   }
 
   async function resetPassword(email) {
