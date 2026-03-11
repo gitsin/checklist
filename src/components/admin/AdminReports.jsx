@@ -66,15 +66,26 @@ export default function AdminReports({ goBack, lojas }) {
         const allItems = [...(rangeData || []), ...extraData];
         const items = [...new Map(allItems.map(i => [i.id, i])).values()];
 
-        // 3. Busca nomes dos colaboradores que completaram tarefas
+        // 3. Busca nomes dos colaboradores que completaram tarefas + seus gestores
         const profileIds = [...new Set(items.map(i => i.completed_by).filter(Boolean))];
         let profilesData = [];
         if (profileIds.length > 0) {
             const { data: pd } = await supabase
                 .from('user_profiles')
-                .select('id, full_name, role:roles(name)')
+                .select('id, full_name, manager_id, role:roles(name)')
                 .in('id', profileIds);
             profilesData = pd || [];
+
+            // Busca nomes dos gestores
+            const managerIds = [...new Set(profilesData.map(p => p.manager_id).filter(Boolean))]
+                .filter(mid => !profileIds.includes(mid)); // evita rebuscar quem já veio
+            if (managerIds.length > 0) {
+                const { data: mgrs } = await supabase
+                    .from('user_profiles')
+                    .select('id, full_name')
+                    .in('id', managerIds);
+                (mgrs || []).forEach(m => { profilesData.push(m); });
+            }
         }
 
         // 4. Rotinas com seus templates vinculados
@@ -92,12 +103,15 @@ export default function AdminReports({ goBack, lojas }) {
     // PROCESSAMENTO DOS DADOS
     // ========================================================
     function processData(items, empData, routines) {
-        // Mapa de colaboradores (id → {name, role})
+        // Mapa de colaboradores (id → {name, role, manager})
+        const nameMap = {};
+        (empData || []).forEach(e => { nameMap[e.id] = e.full_name; });
         const empMap = {};
         (empData || []).forEach(e => {
             empMap[e.id] = {
                 name: e.full_name,
                 role: e.role?.name || '—',
+                manager: e.manager_id ? (nameMap[e.manager_id] || '—') : '—',
             };
         });
 
@@ -131,7 +145,7 @@ export default function AdminReports({ goBack, lojas }) {
             const emp = empId ? empMap[empId] : null;
             const empName = emp?.name || "Não identificado";
             const empRole = emp?.role || i.template?.role?.name || "—";
-            const manager = "—";
+            const manager = emp?.manager || "—";
             const key = empId || "none";
             if (!empTaskMap[key]) empTaskMap[key] = { name: empName, role: empRole, manager, total: 0, done: 0 };
             empTaskMap[key].total++;
