@@ -72,7 +72,7 @@ export default function AdminReports({ goBack, lojas }) {
         if (profileIds.length > 0) {
             const { data: pd } = await supabase
                 .from('user_profiles')
-                .select('id, full_name, manager_id, role:roles(name)')
+                .select('id, full_name, manager_id, role_id, role:roles(name)')
                 .in('id', profileIds);
             profilesData = pd || [];
 
@@ -103,7 +103,7 @@ export default function AdminReports({ goBack, lojas }) {
     // PROCESSAMENTO DOS DADOS
     // ========================================================
     function processData(items, empData, routines) {
-        // Mapa de colaboradores (id → {name, role, manager})
+        // Mapa de colaboradores (id → {name, role, role_id, manager})
         const nameMap = {};
         (empData || []).forEach(e => { nameMap[e.id] = e.full_name; });
         const empMap = {};
@@ -111,6 +111,7 @@ export default function AdminReports({ goBack, lojas }) {
             empMap[e.id] = {
                 name: e.full_name,
                 role: e.role?.name || '—',
+                role_id: e.role_id || null,
                 manager: e.manager_id ? (nameMap[e.manager_id] || '—') : '—',
             };
         });
@@ -138,18 +139,45 @@ export default function AdminReports({ goBack, lojas }) {
         );
 
         // 3. POR FUNCIONÁRIO
-        const empTaskMap = {};
+        // Total de tarefas por role_id (para calcular ATRIBUÍDAS)
+        const roleTaskCount = {};
         items.forEach(i => {
-            const empId = i.completed_by;
-            if (!empId && i.status !== "COMPLETED") return;
-            const emp = empId ? empMap[empId] : null;
-            const empName = emp?.name || "Não identificado";
-            const empRole = emp?.role || i.template?.role?.name || "—";
-            const manager = emp?.manager || "—";
-            const key = empId || "none";
-            if (!empTaskMap[key]) empTaskMap[key] = { name: empName, role: empRole, manager, total: 0, done: 0 };
-            empTaskMap[key].total++;
-            if (i.status === "COMPLETED") empTaskMap[key].done++;
+            const rId = i.template?.role_id;
+            if (rId) roleTaskCount[rId] = (roleTaskCount[rId] || 0) + 1;
+        });
+        // Concluídas por funcionário
+        const empDoneCount = {};
+        items.forEach(i => {
+            if (i.completed_by && i.status === 'COMPLETED') {
+                empDoneCount[i.completed_by] = (empDoneCount[i.completed_by] || 0) + 1;
+            }
+        });
+        // Monta mapa: cada funcionário que completou ao menos 1 tarefa
+        // ATRIBUÍDAS = total de tarefas do seu cargo; CONCLUÍDAS = as que ele completou
+        const empTaskMap = {};
+        Object.keys(empDoneCount).forEach(empId => {
+            const emp = empMap[empId];
+            if (!emp) return;
+            empTaskMap[empId] = {
+                name: emp.name,
+                role: emp.role,
+                manager: emp.manager,
+                total: roleTaskCount[emp.role_id] || 0,
+                done: empDoneCount[empId],
+            };
+        });
+        // Adiciona funcionários que não completaram nada mas têm tarefas no cargo
+        Object.entries(empMap).forEach(([empId, emp]) => {
+            if (empTaskMap[empId]) return; // já adicionado
+            const total = roleTaskCount[emp.role_id] || 0;
+            if (total === 0) return;
+            empTaskMap[empId] = {
+                name: emp.name,
+                role: emp.role,
+                manager: emp.manager,
+                total,
+                done: 0,
+            };
         });
         setByEmployee(
             Object.values(empTaskMap)
