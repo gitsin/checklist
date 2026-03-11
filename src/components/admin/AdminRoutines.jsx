@@ -72,11 +72,12 @@ export default function AdminRoutines({ goBack, lojas, orgId }) {
 
     async function salvarNovaRotina() {
         if (!novaRotina.store_id || !novaRotina.title) return alert("Loja e Título são obrigatórios");
+        const storeOrgId = orgId || lojas.find(l => l.id === novaRotina.store_id)?.organization_id;
         const { data: rotinaCriada, error: errRotina } = await supabase.from('routine_templates').insert({
             store_id: novaRotina.store_id, title: novaRotina.title, description: novaRotina.description,
             start_time: novaRotina.start_time || null, deadline_time: novaRotina.deadline_time || null, icon: novaRotina.icon,
             notify_whatsapp: novaRotina.notify_whatsapp,
-            organization_id: orgId
+            organization_id: storeOrgId
         }).select().single();
         if (errRotina) return alert("Erro ao criar rotina: " + errRotina.message);
         if (itensSelecionados.length > 0) {
