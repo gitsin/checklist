@@ -404,7 +404,7 @@ export default function AdminReports({ goBack, lojas }) {
                                             />
                                         </div>
                                         <span className="text-[7px] sm:text-[8px] text-slate-400 whitespace-nowrap truncate w-full text-center">
-                                            {d.date.slice(5).replace('-', '/')}
+                                            {d.date.slice(8)}/{d.date.slice(5, 7)}
                                         </span>
                                     </div>
                                 ))}
