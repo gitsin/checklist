@@ -66,14 +66,25 @@ export default function AdminReports({ goBack, lojas }) {
         const allItems = [...(rangeData || []), ...extraData];
         const items = [...new Map(allItems.map(i => [i.id, i])).values()];
 
-        // 3. Rotinas com seus templates vinculados
+        // 3. Busca nomes dos colaboradores que completaram tarefas
+        const profileIds = [...new Set(items.map(i => i.completed_by_profile_id).filter(Boolean))];
+        let profilesData = [];
+        if (profileIds.length > 0) {
+            const { data: pd } = await supabase
+                .from('user_profiles')
+                .select('id, full_name, role:roles(name)')
+                .in('id', profileIds);
+            profilesData = pd || [];
+        }
+
+        // 4. Rotinas com seus templates vinculados
         let routineQuery = supabase
             .from('routine_templates')
             .select('id, title, routine_items(task_template_id)');
         if (lojaId !== 'all') routineQuery = routineQuery.eq('store_id', lojaId);
         const { data: routinesData } = await routineQuery;
 
-        processData(items, [], routinesData || []);
+        processData(items, profilesData, routinesData || []);
         setLoading(false);
     }
 
@@ -81,13 +92,12 @@ export default function AdminReports({ goBack, lojas }) {
     // PROCESSAMENTO DOS DADOS
     // ========================================================
     function processData(items, empData, routines) {
-        // Mapa de funcionários (id → {name, role, manager})
+        // Mapa de colaboradores (id → {name, role})
         const empMap = {};
         (empData || []).forEach(e => {
             empMap[e.id] = {
                 name: e.full_name,
                 role: e.role?.name || '—',
-                manager: e.manager?.full_name || '—',
             };
         });
 
@@ -113,15 +123,15 @@ export default function AdminReports({ goBack, lojas }) {
                 .sort((a, b) => b.pct - a.pct)
         );
 
-        // 3. POR FUNCIONÁRIO (com gestor)
+        // 3. POR FUNCIONÁRIO
         const empTaskMap = {};
         items.forEach(i => {
-            const empId = i.completed_by;
+            const empId = i.completed_by_profile_id;
             if (!empId && i.status !== "COMPLETED") return;
             const emp = empId ? empMap[empId] : null;
-            const empName = emp?.name || (empId ? `ID ${empId}` : "Não atribuído");
+            const empName = emp?.name || "Não identificado";
             const empRole = emp?.role || i.template?.role?.name || "—";
-            const manager = emp?.manager || "—";
+            const manager = "—";
             const key = empId || "none";
             if (!empTaskMap[key]) empTaskMap[key] = { name: empName, role: empRole, manager, total: 0, done: 0 };
             empTaskMap[key].total++;
