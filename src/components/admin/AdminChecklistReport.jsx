@@ -24,12 +24,13 @@ export default function AdminChecklistReport({ goBack, lojas, allRoles }) {
                 return;
             }
 
-            // Busca os role_ids distintos de funcionários ativos na loja
+            // Busca os role_ids distintos de colaboradores ativos na loja
             const { data: empData } = await supabase
-                .from('employee')
+                .from('user_profiles')
                 .select('role_id')
                 .eq('store_id', filterStore)
-                .eq('active', true);
+                .eq('active', true)
+                .not('role_id', 'is', null);
 
             const roleIds = [...new Set((empData || []).map(e => e.role_id).filter(Boolean))];
 

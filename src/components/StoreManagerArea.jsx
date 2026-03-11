@@ -70,41 +70,54 @@ export default function StoreManagerArea() {
 
   if (activeScreen === "bi") {
     return (
-      <AdminReports
-        goBack={() => setActiveScreen(null)}
-        lojas={lojas}
-      />
+      <div className="min-h-screen bg-slate-100 font-sans p-3 sm:p-5 md:p-8 pb-safe">
+        <div className="max-w-6xl mx-auto">
+          <AdminReports goBack={() => setActiveScreen(null)} lojas={lojas} />
+        </div>
+      </div>
     );
   }
 
   if (activeScreen === "checklist") {
     return (
-      <AdminChecklistReport
-        goBack={() => setActiveScreen(null)}
-        lojas={lojas}
-        allRoles={[]}
-      />
+      <div className="min-h-screen bg-slate-100 font-sans p-3 sm:p-5 md:p-8 pb-safe">
+        <div className="max-w-6xl mx-auto">
+          <AdminChecklistReport
+            goBack={() => setActiveScreen(null)}
+            lojas={lojas}
+            allRoles={roles}
+          />
+        </div>
+      </div>
     );
   }
 
   if (activeScreen === "admin-tarefas") {
     return (
-      <AdminTasks
-        goBack={() => setActiveScreen(null)}
-        lojas={lojas}
-        roles={roles}
-        orgId={userProfile?.organization_id}
-      />
+      <div className="min-h-screen bg-slate-100 font-sans p-3 sm:p-5 md:p-8 pb-safe">
+        <div className="max-w-6xl mx-auto">
+          <AdminTasks
+            goBack={() => setActiveScreen(null)}
+            lojas={lojas}
+            roles={roles}
+            orgId={userProfile?.organization_id}
+          />
+        </div>
+      </div>
     );
   }
 
   if (activeScreen === "admin-rotinas") {
     return (
-      <AdminRoutines
-        goBack={() => setActiveScreen(null)}
-        lojas={lojas}
-        orgId={userProfile?.organization_id}
-      />
+      <div className="min-h-screen bg-slate-100 font-sans p-3 sm:p-5 md:p-8 pb-safe">
+        <div className="max-w-6xl mx-auto">
+          <AdminRoutines
+            goBack={() => setActiveScreen(null)}
+            lojas={lojas}
+            orgId={userProfile?.organization_id}
+          />
+        </div>
+      </div>
     );
   }
 
