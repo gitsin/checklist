@@ -25,7 +25,11 @@ export function AuthProvider({ children }) {
   const signingInRef = useRef(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+    // IMPORTANTE: callback NÃO pode ser async nem awaitar nada do Supabase aqui dentro.
+    // Awaitar dentro do onAuthStateChange segura o lock interno do auth e causa deadlock
+    // quando o token precisa ser renovado — a tela fica travada em "Carregando..." para sempre.
+    // Solução: setTimeout(..., 0) sai do lock antes de fazer qualquer query.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'PASSWORD_RECOVERY') {
         setPasswordRecovery(true);
         setSession(s);
@@ -35,19 +39,18 @@ export function AuthProvider({ children }) {
 
       if (event === 'INITIAL_SESSION') {
         if (s && !localStorage.getItem('rememberMe') && !sessionStorage.getItem('sessionActive')) {
-          // Descarta estado imediatamente sem aguardar o signOut
-          // (awaitar signOut dentro do onAuthStateChange causa deadlock de callbacks)
+          // Sessão antiga sem "lembrar-me" e sem aba ativa: descarta
           setSession(null);
           setUserProfile(null);
           setOrgHeader(null);
           setLoading(false);
-          supabase.auth.signOut({ scope: 'local' }); // fire-and-forget: limpa o token do localStorage
+          supabase.auth.signOut({ scope: 'local' }); // fire-and-forget
           return;
         }
         setSession(s);
         if (s) {
           sessionStorage.setItem('sessionActive', '1');
-          await fetchUserProfile(s.user.id);
+          setTimeout(() => fetchUserProfile(s.user.id), 0);
         } else {
           setLoading(false);
         }
@@ -55,13 +58,14 @@ export function AuthProvider({ children }) {
       }
 
       if (event === 'SIGNED_IN' && signingInRef.current) {
+        // Login manual em andamento: signIn() já chama fetchUserProfile diretamente
         setSession(s);
         return;
       }
 
       setSession(s);
       if (s) {
-        await fetchUserProfile(s.user.id);
+        setTimeout(() => fetchUserProfile(s.user.id), 0);
       } else {
         setUserProfile(null);
         setLoading(false);
