@@ -38,30 +38,33 @@ export default function AdminReports({ goBack, lojas }) {
 
         setLoading(true);
 
-        const hoje = getLocalDate();
-        function maisRecente(d1, d2) { return d1 > d2 ? d1 : d2; }
+        const selectFields = `*, template:task_templates!inner(title, description, due_time, role_id, role:roles(name))`;
 
-        // 1. Checklist items
-        let query = supabase.from("checklist_items").select(`
-            *,
-            template:task_templates!inner(title, description, due_time, role_id, role:roles(name))
-        `);
-        if (lojaId !== 'all') query = query.eq("store_id", lojaId);
-
-        if (dataInicio === maisRecente(dataInicio, hoje)) {
-            const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
-            query = query.or(`scheduled_date.gte.${dataInicio},created_at.gt.${ontem.toISOString()}`);
-        } else {
-            query = query.gte("scheduled_date", dataInicio);
+        function baseQ() {
+            let q = supabase.from("checklist_items").select(selectFields);
+            if (lojaId !== 'all') q = q.eq("store_id", lojaId);
+            return q;
         }
-        const { data, error } = await query.lte("scheduled_date", dataFim);
 
-        // 2. Dados de funcionários com gestor
-        let empQuery = supabase
-            .from('employee')
-            .select('id, full_name, role_id, manager_id, manager:manager_id(full_name), role:roles(name)');
-        if (lojaId !== 'all') empQuery = empQuery.eq('store_id', lojaId);
-        const { data: empData } = await empQuery;
+        // 1. Tarefas agendadas no período selecionado
+        const { data: rangeData } = await baseQ()
+            .gte("scheduled_date", dataInicio)
+            .lte("scheduled_date", dataFim);
+
+        // 2. Se o período inclui hoje: busca tarefas de dias anteriores que ainda
+        //    estão na fila (atrasadas pendentes/devolvidas/em revisão) OU foram
+        //    concluídas/aprovadas hoje (scheduled em dia anterior, executadas hoje)
+        let extraData = [];
+        if (dataFim >= hoje) {
+            const { data: od } = await baseQ()
+                .lt("scheduled_date", dataInicio)
+                .or(`status.in.(PENDING,RETURNED,WAITING_APPROVAL),completed_at.gte.${hoje}T00:00:00`);
+            extraData = od || [];
+        }
+
+        // Mescla e deduplica por id
+        const allItems = [...(rangeData || []), ...extraData];
+        const items = [...new Map(allItems.map(i => [i.id, i])).values()];
 
         // 3. Rotinas com seus templates vinculados
         let routineQuery = supabase
@@ -70,19 +73,7 @@ export default function AdminReports({ goBack, lojas }) {
         if (lojaId !== 'all') routineQuery = routineQuery.eq('store_id', lojaId);
         const { data: routinesData } = await routineQuery;
 
-        if (error) {
-            let fallback = supabase
-                .from("checklist_items")
-                .select(`*, template:task_templates!inner(title, description, due_time, role_id, role:roles(name))`)
-                .gte("scheduled_date", dataInicio)
-                .lte("scheduled_date", dataFim);
-            if (lojaId !== 'all') fallback = fallback.eq("store_id", lojaId);
-            const { data: fbData } = await fallback;
-            processData(fbData || [], empData || [], routinesData || []);
-        } else {
-            processData(data || [], empData || [], routinesData || []);
-        }
-
+        processData(items, [], routinesData || []);
         setLoading(false);
     }
 
