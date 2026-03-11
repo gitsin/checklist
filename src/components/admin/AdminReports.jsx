@@ -67,7 +67,7 @@ export default function AdminReports({ goBack, lojas }) {
         const items = [...new Map(allItems.map(i => [i.id, i])).values()];
 
         // 3. Busca nomes dos colaboradores que completaram tarefas
-        const profileIds = [...new Set(items.map(i => i.completed_by_profile_id).filter(Boolean))];
+        const profileIds = [...new Set(items.map(i => i.completed_by).filter(Boolean))];
         let profilesData = [];
         if (profileIds.length > 0) {
             const { data: pd } = await supabase
@@ -126,7 +126,7 @@ export default function AdminReports({ goBack, lojas }) {
         // 3. POR FUNCIONÁRIO
         const empTaskMap = {};
         items.forEach(i => {
-            const empId = i.completed_by_profile_id;
+            const empId = i.completed_by;
             if (!empId && i.status !== "COMPLETED") return;
             const emp = empId ? empMap[empId] : null;
             const empName = emp?.name || "Não identificado";
@@ -375,26 +375,22 @@ export default function AdminReports({ goBack, lojas }) {
                         </div>
                     )}
 
-                    {/* COLABORADORES EM ATENÇÃO */}
-                    {byEmployee.filter(e => e.pct < 60 && e.total > 0).length > 0 && (
+                    {/* CARGOS EM ATENÇÃO */}
+                    {byRole.filter(r => r.pct < 60 && r.total > 0).length > 0 && (
                         <div className="bg-amber-50 p-5 rounded-xl border border-amber-200 shadow-sm">
                             <h3 className="font-bold text-amber-800 mb-3 flex items-center gap-2">
                                 <AlertCircle size={18} className="text-amber-600" /> Atenção — Baixo Desempenho
                                 <span className="bg-amber-200 text-amber-800 text-xs font-black px-2.5 py-0.5 rounded-full ml-1">
-                                    {byEmployee.filter(e => e.pct < 60 && e.total > 0).length}
+                                    {byRole.filter(r => r.pct < 60 && r.total > 0).length}
                                 </span>
                             </h3>
                             <div className="space-y-2">
-                                {byEmployee.filter(e => e.pct < 60 && e.total > 0).map((e, idx) => (
+                                {byRole.filter(r => r.pct < 60 && r.total > 0).map((r, idx) => (
                                     <div key={idx} className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-lg px-4 py-2.5">
-                                        <div className="min-w-0">
-                                            <span className="font-bold text-slate-800 text-sm">{e.name}</span>
-                                            <span className="text-slate-400 text-xs ml-2">{e.role}</span>
-                                            {e.manager !== '—' && <span className="text-slate-300 text-xs ml-2">· {e.manager}</span>}
-                                        </div>
+                                        <span className="font-bold text-slate-800 text-sm">{r.name}</span>
                                         <div className="flex items-center gap-3 shrink-0">
-                                            <span className="text-xs text-slate-500">{e.done}/{e.total} tarefas</span>
-                                            <span className="font-black text-red-600 text-sm">{e.pct.toFixed(0)}%</span>
+                                            <span className="text-xs text-slate-500">{r.done}/{r.total} tarefas</span>
+                                            <span className="font-black text-red-600 text-sm">{r.pct.toFixed(0)}%</span>
                                         </div>
                                     </div>
                                 ))}
