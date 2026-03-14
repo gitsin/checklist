@@ -9,6 +9,7 @@ import { useKioskData } from "../hooks/useKioskData";
 import { useTaskActions } from "../hooks/useTaskActions";
 import { useManagerActions } from "../hooks/useManagerActions";
 import { useSpotTask } from "../hooks/useSpotTask";
+import { getEffectiveDueTime } from "../utils/scheduleOverrides";
 
 export default function KioskArea({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('todo');
@@ -125,7 +126,7 @@ export default function KioskArea({ user, onLogout }) {
               const isReturned = item.status === 'RETURNED';
               const isWaiting = item.status === 'WAITING_APPROVAL';
               const isPending = item.status === 'PENDING';
-              const isLateTask = !isWaiting && !isReturned && activeTab === 'todo' && isLate(item.template?.due_time);
+              const isLateTask = !isWaiting && !isReturned && activeTab === 'todo' && isLate(getEffectiveDueTime(item));
               const done = item.status === 'COMPLETED';
               const requiresPhoto = item.template?.requires_photo_evidence;
 
@@ -175,14 +176,14 @@ export default function KioskArea({ user, onLogout }) {
                       {isSpot && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-200 whitespace-nowrap">
                           <Zap size={10} />
-                          {item.template?.due_time
-                            ? `Fazer hoje até as ${item.template.due_time.slice(0, 5)}`
+                          {getEffectiveDueTime(item)
+                            ? `Fazer hoje até as ${getEffectiveDueTime(item).slice(0, 5)}`
                             : 'Fazer hoje'}
                         </span>
                       )}
-                      {!isSpot && item.template?.due_time && (
+                      {!isSpot && getEffectiveDueTime(item) && (
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap border ${isLateTask ? 'text-red-700 bg-red-200 border-red-300' : 'text-slate-600 bg-slate-200 border-slate-300'}`}>
-                          <Clock size={10} /> Até {item.template.due_time.slice(0, 5)}
+                          <Clock size={10} /> Até {getEffectiveDueTime(item).slice(0, 5)}
                         </span>
                       )}
                       {item.template?.routine_items?.length > 0 && item.template.routine_items.map((ri, idx) => ri.routine_templates && (
@@ -370,8 +371,8 @@ export default function KioskArea({ user, onLogout }) {
                       {isSpot && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 text-violet-700 border border-violet-200 whitespace-nowrap">
                           <Zap size={10} />
-                          {item.template?.due_time
-                            ? `Fazer hoje até as ${item.template.due_time.slice(0, 5)}`
+                          {getEffectiveDueTime(item)
+                            ? `Fazer hoje até as ${getEffectiveDueTime(item).slice(0, 5)}`
                             : 'Fazer hoje'}
                         </span>
                       )}

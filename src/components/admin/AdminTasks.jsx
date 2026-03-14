@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FileUp, PlayCircle, Download, X, MessageCircle, CheckCircle2, Store, AlertTriangle, Sparkles, Filter, CalendarCheck } from "lucide-react";
 import TaskWizard from "./TaskWizard";
+import ScheduleOverridesEditor from "./ScheduleOverridesEditor";
 
 export default function AdminTasks({ goBack, lojas, roles, orgId }) {
     const [listaTemplates, setListaTemplates] = useState([]);
@@ -44,6 +45,7 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
     const [rotinasDisponiveis, setRotinasDisponiveis] = useState([]);
     const [novaTarefaRotina, setNovaTarefaRotina] = useState("");
     const [editTarefaRotina, setEditTarefaRotina] = useState(""); // routine_id atual da tarefa em edição
+    const [editOverrides, setEditOverrides] = useState([]); // schedule overrides da tarefa em edição
 
     // --- Lógica de Filtros e Carregamento ---
 
@@ -73,7 +75,7 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
 
     async function buscarTarefas() {
         if (!filtroLojaTarefa) { setListaTemplates([]); return; }
-        let q = supabase.from("task_templates").select(`*, stores(name), roles(name), routine_items(routine_templates(id, title))`).eq("store_id", filtroLojaTarefa).order("created_at", { ascending: false });
+        let q = supabase.from("task_templates").select(`*, stores(name), roles(name), routine_items(routine_templates(id, title)), task_schedule_overrides(day_of_week, due_time, skip_day)`).eq("store_id", filtroLojaTarefa).order("created_at", { ascending: false });
         if (filtroCargoTarefa && filtroCargoTarefa !== "") q = q.eq("role_id", filtroCargoTarefa);
         const { data, error } = await q;
         if (error) { alert(error.message); return; }
@@ -207,6 +209,20 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
                 task_template_id: editTarefa.id,
                 order_index: 0
             });
+        }
+
+        // Atualiza overrides de horário por dia da semana
+        await supabase.from('task_schedule_overrides').delete().eq('task_template_id', editTarefa.id);
+        if (editOverrides.length > 0 && editTarefa.frequency_type === 'daily') {
+            const overrideOrgId = orgId || lojas.find(l => l.id === editTarefa.store_id)?.organization_id;
+            const rows = editOverrides.map(o => ({
+                task_template_id: editTarefa.id,
+                day_of_week: o.day_of_week,
+                due_time: o.due_time || null,
+                skip_day: !!o.skip_day,
+                organization_id: overrideOrgId || null,
+            }));
+            await supabase.from('task_schedule_overrides').insert(rows);
         }
 
         setModalEditarTarefaOpen(false);
@@ -482,6 +498,7 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
                                     {t.roles?.name}
                                     {t.requires_photo_evidence && ' • 📷 Exige Foto'}
                                     {t.notify_whatsapp && <span className="ml-1 inline-flex items-center gap-0.5 text-green-600"><MessageCircle size={10} /> WhatsApp</span>}
+                                    {t.task_schedule_overrides?.length > 0 && <span className="ml-1 inline-flex items-center gap-0.5 text-indigo-600">🕐 Horários por dia</span>}
                                 </div>
                                 {t.routine_items?.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mt-2">
@@ -502,6 +519,9 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
                                     // Busca rotina atual vinculada à tarefa
                                     const { data: ri } = await supabase.from('routine_items').select('routine_id').eq('task_template_id', t.id).maybeSingle();
                                     setEditTarefaRotina(ri?.routine_id || "");
+                                    // Busca overrides de horário por dia da semana
+                                    const { data: ov } = await supabase.from('task_schedule_overrides').select('day_of_week, due_time, skip_day').eq('task_template_id', t.id).order('day_of_week');
+                                    setEditOverrides(ov || []);
                                     setModalEditarTarefaOpen(true);
                                 }} className="text-blue-600 p-2 hover:bg-blue-50 rounded-full"><Pencil size={18} /></button>
                             </div>
@@ -675,6 +695,17 @@ export default function AdminTasks({ goBack, lojas, roles, orgId }) {
                                     <p className="text-[10px] text-slate-400 mt-1">Selecione uma loja para ver as rotinas disponíveis.</p>
                                 )}
                             </div>
+
+                            {/* Horários diferenciados por dia — só para tarefas diárias com hora limite */}
+                            {editTarefa.frequency_type === 'daily' && editTarefa.due_time && (
+                                <div className="mb-4">
+                                    <ScheduleOverridesEditor
+                                        overrides={editOverrides}
+                                        defaultDueTime={editTarefa.due_time}
+                                        onChange={setEditOverrides}
+                                    />
+                                </div>
+                            )}
 
                             <button onClick={salvarEdicaoTarefa} className="bg-gradient-to-r from-purple-500 to-violet-600 text-white px-4 py-3 rounded-xl w-full font-bold min-h-[48px] shadow-md hover:shadow-lg hover:from-purple-600 hover:to-violet-700 transition-all active:scale-[0.98]">Salvar Alterações</button>
                             <button onClick={() => setModalEditarTarefaOpen(false)} className="mt-2 text-slate-400 hover:text-slate-600 w-full py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>

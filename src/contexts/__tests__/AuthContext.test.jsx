@@ -402,16 +402,27 @@ describe('AuthContext', () => {
 
       renderWithAuth();
 
+      // INITIAL_SESSION triggers fetchUserProfile via setTimeout(…, 0)
       await act(async () => {
-        await authStateCallback('INITIAL_SESSION', mockSession);
+        authStateCallback('INITIAL_SESSION', mockSession);
+      });
+      // Flush the setTimeout(…, 0) queued by the callback
+      await act(async () => {
+        await new Promise(r => setTimeout(r, 0));
       });
 
-      // Simulate token refresh
+      mockFrom.mockClear();
+      mockFrom.mockReturnValue(mockQueryChain(mockAdminUser));
+
+      // TOKEN_REFRESHED also triggers fetchUserProfile via setTimeout
       await act(async () => {
-        await authStateCallback('TOKEN_REFRESHED', mockSession);
+        authStateCallback('TOKEN_REFRESHED', mockSession);
+      });
+      await act(async () => {
+        await new Promise(r => setTimeout(r, 0));
       });
 
-      // fetchAdminProfile should have been called again
+      // fetchUserProfile should have been called again
       expect(mockFrom).toHaveBeenCalledWith('user_profiles');
     });
   });

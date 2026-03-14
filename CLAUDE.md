@@ -186,16 +186,94 @@ VITE_SUPABASE_ANON_KEY=
 
 Se ausentes, a app renderiza tela branca — o cliente Supabase não tem guards.
 
-## Testing (Regression)
+## Governança de Desenvolvimento (TDD-First)
 
-Stack: **Vitest 4 + React Testing Library + jsdom**
+Inspirado nas práticas de Extreme Programming documentadas por Fabio Akita. O princípio central: **testes são cidadãos de primeira classe**, não um passo opcional ao final.
 
+### Ciclo TDD obrigatório
+
+Toda feature ou bugfix DEVE seguir o ciclo Red-Green-Refactor:
+
+```
+1. RED    → Escrever teste que falha (descreve o comportamento esperado)
+2. GREEN  → Escrever o código mínimo que faz o teste passar
+3. REFACTOR → Limpar/otimizar sem quebrar testes
+```
+
+**Ordem de implementação para features novas:**
+1. Escrever testes unitários do hook/helper/lógica de negócio
+2. Rodar `npm test` — confirmar que falham (RED)
+3. Implementar o código que faz os testes passarem (GREEN)
+4. Refatorar se necessário (REFACTOR)
+5. Escrever testes de componente (renderização, interação)
+6. Implementar o componente
+7. `npm test` — todos passando antes de commitar
+
+### Camadas de teste
+
+| Camada | O que testa | Onde vive | Quando |
+|--------|-------------|-----------|--------|
+| **Unitário** | Hooks, helpers, funções puras | `src/hooks/__tests__/`, `src/utils/__tests__/` | Toda feature/bugfix |
+| **Componente** | Renderização, interação UI | `src/components/admin/__tests__/` | Toda tela nova/modificada |
+| **Integração** | Fluxos completos (login → ação → resultado) | `src/test/integration/` | Fluxos críticos |
+| **E2E** | Navegador real via Playwright | `tests/e2e/` | Fluxos de deploy |
+
+### Stack de testes
+
+**Unitários e Componente:** Vitest 4 + React Testing Library + jsdom
 - Config em `vite.config.js` (bloco `test`), setup em `src/test/setup.js`
-- Testes em `src/components/admin/__tests__/` e `src/contexts/__tests__/`
 - Supabase mockado via `vi.mock` — nunca acessa DB real em testes
-- **Rodar `npm test` após toda mudança de feature antes de commitar**
-- Ao criar ou modificar tela admin, adicionar/atualizar o arquivo de teste
 - Nomenclatura: blocos `describe` por área (`Renderização inicial`, `Gerenciar Lojas`, etc.)
+
+**E2E:** Playwright (via skill `webapp-testing`)
+- Scripts auxiliares em `scripts/with_server.py`
+- Headless chromium, screenshots para debug
+
+### Regras de governança
+
+1. **Proibido commitar sem testes passando** — `npm test` é obrigatório antes de todo commit
+2. **Feature sem teste = feature incompleta** — não considere uma task finalizada até que tenha cobertura de teste
+3. **Bugfix começa pelo teste** — reproduzir o bug como teste que falha, depois corrigir
+4. **Testes retroativos** — ao modificar código existente sem teste, adicionar teste primeiro
+5. **Proporção mínima** — meta de 3+ testes por feature (unitário + componente + edge case)
+
+### Estrutura de arquivos de teste
+
+```
+src/
+├── hooks/
+│   ├── useKioskData.js
+│   └── __tests__/
+│       └── useKioskData.test.js
+├── utils/
+│   └── __tests__/
+│       └── getEffectiveDueTime.test.js
+├── components/
+│   └── admin/
+│       └── __tests__/
+│           ├── AdminTasks.test.jsx
+│           └── AdminRoutines.test.jsx
+├── contexts/
+│   └── __tests__/
+│       └── AuthContext.test.jsx
+└── test/
+    ├── setup.js
+    └── integration/
+        └── taskFlow.test.js
+```
+
+### CI/CD — Gate de qualidade
+
+```
+Push → Vercel Build → npm test → Deploy
+         ↓                ↓
+    Build falhou?    Testes falharam?
+         ↓                ↓
+    ❌ Não deploya    ❌ Não deploya
+```
+
+- Vercel roda `npm run build` automaticamente; testes devem ser integrados ao build
+- Nenhum deploy em produção sem testes passando
 - Skills de referência: `.claude/skills/` (`javascript-testing-patterns`, `testing-patterns`, `test-automator`)
 
 ## Conventions
@@ -206,3 +284,34 @@ Stack: **Vitest 4 + React Testing Library + jsdom**
 - Design system em `.claude/styleguide.md` — cor primária `#1F4D3A` (verde floresta), mapeada para `primary-500` no Tailwind
 - Touch target mínimo: 44px de altura em elementos interativos
 - Animações máx 300ms; `animate-fade-in` e `animate-slide-up` são utilities Tailwind customizadas
+
+## Workflow de Desenvolvimento
+
+### Ordem de trabalho para features
+
+```
+1. Planejar  → Definir escopo, arquivos impactados, schema DB
+2. Testar    → Escrever testes que descrevem o comportamento (TDD RED)
+3. Codificar → Implementar até os testes passarem (TDD GREEN)
+4. Refatorar → Limpar código mantendo testes verdes (TDD REFACTOR)
+5. Validar   → npm test + npm run build (gate de qualidade)
+6. Commitar  → Somente se etapa 5 passar
+7. Deploy    → Push → Vercel (automático)
+```
+
+### Ordem de trabalho para bugfixes
+
+```
+1. Reproduzir → Entender o bug, identificar causa raiz
+2. Testar     → Escrever teste que reproduz o bug (deve falhar)
+3. Corrigir   → Fix mínimo que faz o teste passar
+4. Validar    → npm test (todos passando, inclusive o novo)
+5. Commitar   → Somente se etapa 4 passar
+```
+
+### Pair programming com IA
+
+- Iterações curtas: implementar → testar → ajustar
+- CLAUDE.md é a "spec viva" — atualizar sempre que a arquitetura mudar
+- Nunca confiar em "one-shot" — validar cada mudança com testes
+- Decisões arquiteturais são humanas; IA acelera execução

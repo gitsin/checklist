@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../supabaseClient";
+import { getEffectiveDueTime } from "../utils/scheduleOverrides";
 
 export function useKioskData(user) {
   const [tasks, setTasks] = useState([]);
@@ -95,8 +96,8 @@ export function useKioskData(user) {
         // Ordena pela data de vencimento: mais antiga primeiro
         if (a.scheduled_date !== b.scheduled_date) return a.scheduled_date.localeCompare(b.scheduled_date);
         // Dentro do mesmo dia, pelo horário mais cedo primeiro
-        const timeA = a.template?.due_time || '23:59';
-        const timeB = b.template?.due_time || '23:59';
+        const timeA = getEffectiveDueTime(a) || '23:59';
+        const timeB = getEffectiveDueTime(b) || '23:59';
         return timeA.localeCompare(timeB);
       });
       setTasks(sorted);
@@ -175,7 +176,7 @@ export function useKioskData(user) {
             if (!taskRoleId || !subRoleIds.includes(String(taskRoleId))) return false;
             if (item.scheduled_date < today) return true;
             if (item.status === 'RETURNED') return true;
-            const dueTime = item.template?.due_time;
+            const dueTime = getEffectiveDueTime(item);
             if (!dueTime) return false;
             return nowStr > dueTime.slice(0, 5);
           });
@@ -186,8 +187,8 @@ export function useKioskData(user) {
             if (a.scheduled_date !== b.scheduled_date) {
               return a.scheduled_date.localeCompare(b.scheduled_date);
             }
-            const tA = a.template?.due_time || '23:59';
-            const tB = b.template?.due_time || '23:59';
+            const tA = getEffectiveDueTime(a) || '23:59';
+            const tB = getEffectiveDueTime(b) || '23:59';
             return tA.localeCompare(tB);
           });
           setTeamOverdueTasks(overdue);

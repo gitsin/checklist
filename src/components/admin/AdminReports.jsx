@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../../supabaseClient";
+import { getEffectiveDueTime } from "../../utils/scheduleOverrides";
 import {
     ArrowLeft, Search, CheckCircle, Clock,
     Hourglass, BarChart3, Users, AlertCircle, TrendingUp, Calendar,
@@ -221,7 +222,7 @@ export default function AdminReports({ goBack, lojas }) {
         const pend = items
             .filter(i => ["PENDING", "RETURNED"].includes(i.status))
             .map(i => {
-                const due = i.template?.due_time?.slice(0, 5);
+                const due = getEffectiveDueTime(i)?.slice(0, 5);
                 return {
                     id: i.id,
                     title: i.template?.title || "—",

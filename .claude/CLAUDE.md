@@ -173,4 +173,35 @@ npm run test:watch # Testes em modo watch
 - Consultas Supabase com `async/await`
 - Interface em **português brasileiro**
 - Erros ao usuário: genéricos ("Um erro ocorreu, por favor tente novamente")
-- Rodar `npm test` após toda mudança antes de commitar
+
+## Governança TDD-First
+
+Toda feature ou bugfix segue o ciclo **Red-Green-Refactor**:
+
+1. **RED** — Escrever teste que falha (descreve comportamento esperado)
+2. **GREEN** — Código mínimo que faz o teste passar
+3. **REFACTOR** — Limpar sem quebrar testes
+
+### Regras obrigatórias
+
+- **Proibido commitar sem `npm test` passando**
+- **Feature sem teste = feature incompleta**
+- **Bugfix começa pelo teste** — reproduzir como teste que falha, depois corrigir
+- **Testes retroativos** — ao modificar código sem teste, adicionar teste primeiro
+- Meta: 3+ testes por feature (unitário + componente + edge case)
+
+### Camadas de teste
+
+| Camada | Stack | Localização |
+|--------|-------|-------------|
+| Unitário | Vitest + jsdom | `src/hooks/__tests__/`, `src/utils/__tests__/` |
+| Componente | Vitest + React Testing Library | `src/components/admin/__tests__/` |
+| Integração | Vitest | `src/test/integration/` |
+| E2E | Playwright | `tests/e2e/` |
+
+### Workflow
+
+```
+Features: Planejar → Testar (RED) → Codificar (GREEN) → Refatorar → Validar → Commitar
+Bugfixes: Reproduzir → Testar (RED) → Corrigir (GREEN) → Validar → Commitar
+```
