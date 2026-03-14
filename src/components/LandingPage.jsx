@@ -72,34 +72,14 @@ const STATS = [
   { value: '0',   label: 'planilhas necessárias' },
 ];
 
-const PLANS = [
-  {
-    name: 'Starter',
-    price: 'R$ 97',
-    period: '/mês',
-    desc: 'Ideal para uma loja iniciando a gestão de rotinas.',
-    features: ['Até 1 loja', 'Usuários ilimitados', 'Tarefas diárias e semanais', 'Relatórios básicos', 'Suporte por email'],
-    cta: 'Começar grátis',
-    highlight: false,
-  },
-  {
-    name: 'Pro',
-    price: 'R$ 247',
-    period: '/mês',
-    desc: 'Para redes com múltiplas unidades e gestão centralizada.',
-    features: ['Até 10 lojas', 'Grupos e diretores', 'Aprovação com evidência', 'Relatórios avançados', 'Suporte prioritário', 'Tarefas mensais'],
-    cta: 'Começar grátis',
-    highlight: true,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Sob consulta',
-    period: '',
-    desc: 'Holdings com muitas unidades e necessidades customizadas.',
-    features: ['Lojas ilimitadas', 'Multi-holding', 'API e integrações', 'Onboarding dedicado', 'SLA garantido', 'Personalização de marca'],
-    cta: 'Falar com vendas',
-    highlight: false,
-  },
+const SLOT_EXAMPLES = [1, 2, 3, 5, 10];
+const PRICE_PER_SLOT = 97;
+
+const BENEFITS = [
+  { icon: CheckSquare, text: 'Funcionalidades Full: Checklist, Gestão de Equipe, Relatórios e Revisão do Gestor inclusos em cada slot.' },
+  { icon: Zap, text: 'Zero Setup: Sem taxa de implantação ou treinamento.' },
+  { icon: Shield, text: 'Flexibilidade Total: Cancele ou altere a quantidade de slots a qualquer momento.' },
+  { icon: Users, text: 'Usuários ilimitados por loja, sem custo adicional.' },
 ];
 
 // ─── COMPONENTES ───────────────────────────────────────────────────────────────
@@ -350,42 +330,95 @@ function HowItWorks() {
 }
 
 function Pricing() {
+  const [slots, setSlots] = useState(1);
   return (
     <section id="precos" className="py-24 px-4 bg-white">
-      <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-16">
+      <div className="max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-12">
           <p className="text-primary-500 font-bold text-sm uppercase tracking-widest mb-3">Preços</p>
-          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mb-4">Simples e transparente</h2>
-          <p className="text-slate-500 text-lg">Sem taxa de implantação. Cancele quando quiser.</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mb-4">
+            Sua gestão escala com você.<br className="hidden sm:block" /> Sem letras miúdas.
+          </h2>
+          <p className="text-slate-500 text-lg max-w-xl mx-auto">
+            Um preço único por loja ativa. Todas as funcionalidades liberadas, sempre.
+          </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {PLANS.map(plan => (
-            <div key={plan.name} className={`rounded-2xl p-7 flex flex-col border-2 transition-all ${plan.highlight ? 'border-primary-500 bg-primary-500 text-white shadow-2xl shadow-primary-500/20 scale-105' : 'border-slate-200 bg-white hover:border-primary-200 hover:shadow-lg'}`}>
-              <div className="mb-6">
-                <p className={`font-bold text-sm mb-1 ${plan.highlight ? 'text-primary-100' : 'text-slate-500'}`}>{plan.name}</p>
-                <div className="flex items-end gap-1 mb-2">
-                  <span className={`text-3xl font-black ${plan.highlight ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
-                  {plan.period && <span className={`text-sm font-medium mb-1 ${plan.highlight ? 'text-primary-100' : 'text-slate-400'}`}>{plan.period}</span>}
-                </div>
-                <p className={`text-sm ${plan.highlight ? 'text-primary-100' : 'text-slate-500'}`}>{plan.desc}</p>
+        {/* Card principal */}
+        <div className="bg-gradient-to-br from-primary-500 to-emerald-700 rounded-3xl shadow-2xl shadow-primary-500/20 overflow-hidden">
+          {/* Valor */}
+          <div className="text-center pt-10 pb-8 px-6">
+            <p className="text-primary-100 font-bold text-sm uppercase tracking-widest mb-4">Por loja ativa</p>
+            <div className="flex items-end justify-center gap-1 mb-2">
+              <span className="text-lg font-bold text-primary-200 self-start mt-2">R$</span>
+              <span className="text-6xl sm:text-7xl font-black text-white leading-none">97</span>
+              <span className="text-primary-200 font-bold text-lg mb-1">/mês</span>
+            </div>
+            <p className="text-primary-100 text-sm mt-3">Todas as funcionalidades. Sem surpresas.</p>
+          </div>
+
+          {/* Simulador de slots */}
+          <div className="bg-white/10 backdrop-blur-sm border-t border-white/10 px-6 py-8">
+            <p className="text-white font-bold text-sm text-center mb-5 uppercase tracking-wide">Simule o seu investimento</p>
+            <div className="flex items-center justify-center gap-2 flex-wrap mb-6">
+              {SLOT_EXAMPLES.map(n => (
+                <button
+                  key={n}
+                  onClick={() => setSlots(n)}
+                  className={`w-12 h-12 rounded-xl font-black text-sm transition-all active:scale-95 ${slots === n
+                    ? 'bg-white text-primary-600 shadow-lg scale-110'
+                    : 'bg-white/15 text-white hover:bg-white/25 border border-white/20'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="text-center">
+              <p className="text-primary-100 text-sm mb-1">
+                {slots} {slots === 1 ? 'loja ativa' : 'lojas ativas'}
+              </p>
+              <p className="text-white text-3xl font-black">
+                R$ {(slots * PRICE_PER_SLOT).toLocaleString('pt-BR')}<span className="text-primary-200 text-lg font-bold">/mês</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Explicação de slots */}
+          <div className="bg-white/5 border-t border-white/10 px-6 py-6">
+            <div className="flex gap-3 items-start max-w-lg mx-auto">
+              <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center shrink-0 mt-0.5">
+                <Building2 size={16} className="text-white" />
               </div>
+              <p className="text-primary-100 text-sm leading-relaxed">
+                <span className="text-white font-bold">Como funcionam os slots?</span> Você paga por unidades ativas.
+                Se tem 5 slots contratados, pode manter até 5 lojas ativas simultaneamente.
+                Precisa pausar uma operação e abrir outra? Basta inativar uma e ativar a nova no seu painel.
+              </p>
+            </div>
+          </div>
 
-              <ul className="space-y-3 flex-1 mb-8">
-                {plan.features.map(f => (
-                  <li key={f} className="flex items-start gap-2.5">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${plan.highlight ? 'bg-white/20' : 'bg-primary-50'}`}>
-                      <CheckSquare size={12} className={plan.highlight ? 'text-white' : 'text-primary-500'} />
-                    </div>
-                    <span className={`text-sm ${plan.highlight ? 'text-primary-50' : 'text-slate-600'}`}>{f}</span>
-                  </li>
-                ))}
-              </ul>
+          {/* CTA */}
+          <div className="px-6 pb-8 pt-4">
+            <Link to="/login"
+              className="block w-full max-w-sm mx-auto py-4 rounded-xl bg-white text-primary-600 font-black text-center text-lg hover:bg-primary-50 transition-all active:scale-95 shadow-lg">
+              Começar Agora
+            </Link>
+          </div>
+        </div>
 
-              <Link to="/login"
-                className={`w-full py-3.5 rounded-xl font-bold text-center text-sm transition-all active:scale-95 ${plan.highlight ? 'bg-white text-primary-500 hover:bg-primary-50' : 'bg-primary-500 text-white hover:bg-primary-600'}`}>
-                {plan.cta}
-              </Link>
+        {/* Benefícios */}
+        <div className="grid sm:grid-cols-2 gap-5 mt-12">
+          {BENEFITS.map((b, i) => (
+            <div key={i} className="flex items-start gap-3.5 p-4 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center shrink-0">
+                <b.icon size={18} className="text-primary-500" />
+              </div>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                <span className="font-bold text-slate-800">{b.text.split(':')[0]}:</span>
+                {b.text.split(':').slice(1).join(':')}
+              </p>
             </div>
           ))}
         </div>
