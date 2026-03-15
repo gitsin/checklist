@@ -9,6 +9,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 // Lazy: carregados só quando a rota é acessada
 const LandingPage       = lazy(() => import("./components/LandingPage"));
 const LoginPage         = lazy(() => import("./components/LoginPage"));
+const SignupPage        = lazy(() => import("./components/SignupPage"));
 const AdminArea         = lazy(() => import("./components/AdminArea"));
 const StoreManagerArea  = lazy(() => import("./components/StoreManagerArea"));
 const KioskShell        = lazy(() => import("./components/KioskShell"));
@@ -45,6 +46,7 @@ export default function App() {
       ════════════════════════════════════════ */}
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Suspense fallback={<PageLoader />}><LoginPage /></Suspense>} />
+      <Route path="/signup" element={<Suspense fallback={<PageLoader />}><SignupPage /></Suspense>} />
       <Route path="/manual" element={<Suspense fallback={<PageLoader />}><UserManual onExit={() => {}} /></Suspense>} />
 
       {/* ════════════════════════════════════════

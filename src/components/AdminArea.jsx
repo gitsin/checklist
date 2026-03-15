@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ChevronRight, LogOut, Building2, FolderTree, ShieldCheck
+  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ChevronRight, LogOut, Building2, FolderTree, ShieldCheck, DollarSign, CreditCard
 } from "lucide-react";
 
 import AdminStores from "./admin/AdminStores";
@@ -15,6 +15,8 @@ import AdminChecklistReport from "./admin/AdminChecklistReport";
 import AdminOrganizations from "./admin/AdminOrganizations";
 import AdminGroups from "./admin/AdminGroups";
 import AdminUsuarios from "./admin/AdminUsuarios";
+import AdminPricing from "./admin/AdminPricing";
+import AdminSubscriptions from "./admin/AdminSubscriptions";
 
 export default function AdminArea() {
   const navigate = useNavigate();
@@ -70,6 +72,8 @@ export default function AdminArea() {
     organizacoes: 'Organizações',
     grupos: 'Grupos',
     usuarios: 'Usuários',
+    precos: 'Preços',
+    assinaturas: 'Assinaturas',
   };
 
   return (
@@ -121,6 +125,16 @@ export default function AdminArea() {
                   <button onClick={() => setScreen('usuarios')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-rose-50 border border-slate-200 hover:border-rose-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-rose-600">
                     <ShieldCheck size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Usuários</span>
                   </button>
+                  {isSuperAdmin && (
+                    <button onClick={() => setScreen('precos')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-emerald-600">
+                      <DollarSign size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Preços</span>
+                    </button>
+                  )}
+                  {(isSuperAdmin || isHoldingOwner) && (
+                    <button onClick={() => setScreen('assinaturas')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-cyan-50 border border-slate-200 hover:border-cyan-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-cyan-600">
+                      <CreditCard size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Assinaturas</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -153,6 +167,10 @@ export default function AdminArea() {
         )}
 
         {screen === 'organizacoes' && isSuperAdmin && <AdminOrganizations goBack={goBack} />}
+        {screen === 'precos' && isSuperAdmin && <AdminPricing goBack={goBack} />}
+        {screen === 'assinaturas' && (isSuperAdmin || isHoldingOwner) && (
+          <AdminSubscriptions goBack={goBack} orgId={orgId} isSuperAdmin={isSuperAdmin} />
+        )}
         {screen === 'grupos' && <AdminGroups goBack={goBack} orgId={orgId} isSuperAdmin={isSuperAdmin} />}
         {screen === 'usuarios' && (isSuperAdmin || isHoldingOwner || isGroupDirector) && (
           <AdminUsuarios

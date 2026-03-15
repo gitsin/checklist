@@ -131,7 +131,11 @@ export default function LoginPage() {
               {loading ? <span className="animate-pulse">Entrando...</span> : <><LogIn size={18} /> Entrar</>}
             </button>
 
-            <div className="mt-4 text-center">
+            <div className="mt-4 text-center space-y-2">
+              <p className="text-xs text-slate-400">
+                Não tem conta?{' '}
+                <Link to="/signup" className="text-primary-500 font-semibold hover:underline">Cadastre-se grátis</Link>
+              </p>
               <Link to="/" className="text-slate-400 hover:text-slate-600 text-xs font-medium flex items-center gap-1 justify-center">
                 <ArrowLeft size={12} /> Voltar ao início
               </Link>

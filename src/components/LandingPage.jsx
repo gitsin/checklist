@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import {
   CheckSquare, Users, BarChart2, Zap, Shield, Bell,
-  ChevronRight, Menu, X, Star, ArrowRight,
+  Menu, X, Star, ArrowRight,
   ClipboardList, Camera, ThumbsUp, Building2, Smartphone, Globe
 } from 'lucide-react';
+import ContactModal from './ContactModal';
 
 // ─── DATA ──────────────────────────────────────────────────────────────────────
 
@@ -73,7 +75,7 @@ const STATS = [
 ];
 
 const SLOT_EXAMPLES = [1, 2, 3, 5, 10];
-const PRICE_PER_SLOT = 97;
+const DEFAULT_PRICE = 97;
 
 const BENEFITS = [
   { icon: CheckSquare, text: 'Funcionalidades Full: Checklist, Gestão de Equipe, Relatórios e Revisão do Gestor inclusos em cada slot.' },
@@ -104,7 +106,7 @@ function Nav() {
           <Link to="/login" className="text-slate-600 hover:text-slate-900 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-slate-100 transition-colors">
             Entrar
           </Link>
-          <Link to="/login" className="bg-primary-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-primary-600 active:scale-95 transition-all shadow-md">
+          <Link to="/signup" className="bg-primary-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-primary-600 active:scale-95 transition-all shadow-md">
             Começar grátis
           </Link>
         </div>
@@ -123,7 +125,7 @@ function Nav() {
           <a href="#precos"          onClick={() => setOpen(false)} className="text-slate-600 font-medium py-2">Preços</a>
           <hr className="border-slate-100" />
           <Link to="/login" className="text-slate-600 font-semibold py-2">Entrar</Link>
-          <Link to="/login" className="bg-primary-500 text-white font-bold px-5 py-3 rounded-xl text-center">Começar grátis</Link>
+          <Link to="/signup" className="bg-primary-500 text-white font-bold px-5 py-3 rounded-xl text-center">Começar grátis</Link>
         </div>
       )}
     </nav>
@@ -135,7 +137,7 @@ function Hero() {
     <section className="bg-gradient-to-b from-white to-slate-50 pt-16 pb-24 px-4">
       <div className="max-w-4xl mx-auto text-center">
         <div className="inline-flex items-center gap-2 bg-primary-50 text-primary-600 text-xs font-bold px-4 py-1.5 rounded-full mb-6 border border-primary-100">
-          <Star size={12} className="fill-primary-500" /> Número 1 em gestão de rotinas para restaurantes
+          <Star size={12} className="fill-primary-500" /> Mais moderno do que checklists em papel
         </div>
 
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-slate-900 leading-tight mb-6">
@@ -147,11 +149,11 @@ function Hero() {
         <p className="text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed">
           O Niilu transforma checklists em rotinas que realmente funcionam.
           Tarefas por cargo, aprovação com evidência e relatórios automáticos —
-          sem planilha, sem papelada, sem achismo.
+          sem planilha, sem papelada, sem achismo, sem desperício de tempo.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-16">
-          <Link to="/login"
+          <Link to="/signup"
             className="bg-primary-500 text-white font-bold px-8 py-4 rounded-2xl hover:bg-primary-600 active:scale-95 transition-all shadow-xl shadow-primary-500/25 text-base flex items-center justify-center gap-2">
             Começar grátis <ArrowRight size={18} />
           </Link>
@@ -285,7 +287,7 @@ function HowItWorks() {
         <div className="text-center mb-16">
           <p className="text-primary-500 font-bold text-sm uppercase tracking-widest mb-3">Como funciona</p>
           <h2 className="text-3xl sm:text-4xl font-black text-slate-900 mb-4">
-            Configure hoje, use amanhã
+            Contrate agora e tenha sua operação rodando em minutos.
           </h2>
           <p className="text-slate-500 text-lg max-w-xl mx-auto">
             Sem treinamentos longos, sem processos complexos de implantação.
@@ -331,6 +333,15 @@ function HowItWorks() {
 
 function Pricing() {
   const [slots, setSlots] = useState(1);
+  const [price, setPrice] = useState(DEFAULT_PRICE);
+
+  useEffect(() => {
+    supabase.rpc('get_current_pricing').then(({ data }) => {
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row?.price_per_store) setPrice(Number(row.price_per_store));
+    });
+  }, []);
+
   return (
     <section id="precos" className="py-24 px-4 bg-white">
       <div className="max-w-3xl mx-auto">
@@ -341,7 +352,7 @@ function Pricing() {
             Sua gestão escala com você.<br className="hidden sm:block" /> Sem letras miúdas.
           </h2>
           <p className="text-slate-500 text-lg max-w-xl mx-auto">
-            Um preço único por loja ativa. Todas as funcionalidades liberadas, sempre.
+            Um preço único por loja ativa. Todas as funcionalidades liberadas sem restrições, sempre.
           </p>
         </div>
 
@@ -352,7 +363,7 @@ function Pricing() {
             <p className="text-primary-100 font-bold text-sm uppercase tracking-widest mb-4">Por loja ativa</p>
             <div className="flex items-end justify-center gap-1 mb-2">
               <span className="text-lg font-bold text-primary-200 self-start mt-2">R$</span>
-              <span className="text-6xl sm:text-7xl font-black text-white leading-none">97</span>
+              <span className="text-6xl sm:text-7xl font-black text-white leading-none">{Math.floor(price)}</span>
               <span className="text-primary-200 font-bold text-lg mb-1">/mês</span>
             </div>
             <p className="text-primary-100 text-sm mt-3">Todas as funcionalidades. Sem surpresas.</p>
@@ -380,7 +391,7 @@ function Pricing() {
                 {slots} {slots === 1 ? 'loja ativa' : 'lojas ativas'}
               </p>
               <p className="text-white text-3xl font-black">
-                R$ {(slots * PRICE_PER_SLOT).toLocaleString('pt-BR')}<span className="text-primary-200 text-lg font-bold">/mês</span>
+                R$ {(slots * price).toLocaleString('pt-BR')}<span className="text-primary-200 text-lg font-bold">/mês</span>
               </p>
             </div>
           </div>
@@ -401,7 +412,7 @@ function Pricing() {
 
           {/* CTA */}
           <div className="px-6 pb-8 pt-4">
-            <Link to="/login"
+            <Link to="/signup"
               className="block w-full max-w-sm mx-auto py-4 rounded-xl bg-white text-primary-600 font-black text-center text-lg hover:bg-primary-50 transition-all active:scale-95 shadow-lg">
               Começar Agora
             </Link>
@@ -427,7 +438,7 @@ function Pricing() {
   );
 }
 
-function CTA() {
+function CTA({ onContactClick }) {
   return (
     <section className="py-24 px-4 bg-gradient-to-br from-primary-500 to-emerald-700">
       <div className="max-w-3xl mx-auto text-center">
@@ -438,21 +449,21 @@ function CTA() {
           Comece grátis hoje. Configure em minutos, veja resultado em dias.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link to="/login"
+          <Link to="/signup"
             className="bg-white text-primary-600 font-bold px-8 py-4 rounded-2xl hover:bg-primary-50 active:scale-95 transition-all shadow-xl text-base flex items-center justify-center gap-2">
             Começar grátis <ArrowRight size={18} />
           </Link>
-          <a href="mailto:contato@niilu.com.br"
-            className="border-2 border-white/40 text-white font-bold px-8 py-4 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-base flex items-center justify-center gap-2">
+          <button onClick={onContactClick}
+            className="border-2 border-white/40 text-white font-bold px-8 py-4 rounded-2xl hover:bg-white/10 active:scale-95 transition-all text-base flex items-center justify-center gap-2 cursor-pointer">
             Falar com a equipe
-          </a>
+          </button>
         </div>
       </div>
     </section>
   );
 }
 
-function Footer() {
+function Footer({ onContactClick }) {
   return (
     <footer className="bg-slate-900 text-slate-400 py-12 px-4">
       <div className="max-w-6xl mx-auto">
@@ -473,7 +484,7 @@ function Footer() {
           <div>
             <p className="font-bold text-white text-sm mb-4">Empresa</p>
             <ul className="space-y-2 text-sm">
-              <li><a href="mailto:contato@niilu.com.br" className="hover:text-white transition-colors">Contato</a></li>
+              <li><button onClick={onContactClick} className="hover:text-white transition-colors cursor-pointer">Contato</button></li>
               <li><a href="#" className="hover:text-white transition-colors">Termos de uso</a></li>
               <li><a href="#" className="hover:text-white transition-colors">Privacidade</a></li>
             </ul>
@@ -482,16 +493,25 @@ function Footer() {
             <p className="font-bold text-white text-sm mb-4">Acesso</p>
             <ul className="space-y-2 text-sm">
               <li><Link to="/login" className="hover:text-white transition-colors">Entrar</Link></li>
-              <li><Link to="/login" className="hover:text-white transition-colors">Criar conta</Link></li>
+              <li><Link to="/signup" className="hover:text-white transition-colors">Criar conta</Link></li>
             </ul>
           </div>
         </div>
-        <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm">© {new Date().getFullYear()} Niilu. Todos os direitos reservados.</p>
           <div className="flex items-center gap-1 text-sm">
             <Shield size={14} className="text-primary-400" />
-            <span>Dados protegidos com RLS no Supabase</span>
+            <span>Dados protegidos com criptografia</span>
           </div>
+        </div>
+        <div className="border-t border-slate-800 mt-6 pt-6 text-center space-y-1">
+          <p className="text-[11px] text-slate-500">
+            Desenvolvido por <span className="text-slate-400 font-medium">Niilum AI Consultoria em Tecnologia LTDA</span>
+          </p>
+          <p className="text-[11px] text-slate-600">CNPJ 65.645.455/0001-00</p>
+          <p className="text-[10px] text-slate-600">
+            Niilu<sup>®</sup> é uma marca registrada pertencente a Niilum AI Consultoria em Tecnologia LTDA.
+          </p>
         </div>
       </div>
     </footer>
@@ -500,6 +520,9 @@ function Footer() {
 
 // ─── EXPORT ────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
+  const [contactOpen, setContactOpen] = useState(false);
+  const openContact = () => setContactOpen(true);
+
   return (
     <div className="font-sans">
       <Nav />
@@ -508,8 +531,9 @@ export default function LandingPage() {
       <Features />
       <HowItWorks />
       <Pricing />
-      <CTA />
-      <Footer />
+      <CTA onContactClick={openContact} />
+      <Footer onContactClick={openContact} />
+      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
     </div>
   );
 }
