@@ -4,7 +4,7 @@ import { getEffectiveDueTime } from "../../utils/scheduleOverrides";
 import {
     ArrowLeft, Search, CheckCircle, Clock,
     Hourglass, BarChart3, Users, AlertCircle, TrendingUp, Calendar,
-    Filter, Layers
+    Filter, Layers, ChevronDown, ChevronRight, CalendarClock, AlertTriangle
 } from "lucide-react";
 
 function getLocalDate() {
@@ -13,6 +13,81 @@ function getLocalDate() {
     return d.toISOString().split("T")[0];
 }
 
+function getNowTime() {
+    return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+// Helper: tarefa concluída = COMPLETED ou APPROVED
+const isDone = (status) => status === 'COMPLETED' || status === 'APPROVED';
+
+// ========================================================
+// SUB-COMPONENTES
+// ========================================================
+
+function SummaryCard({ icon, label, value, color, border, iconBg = "bg-slate-100", iconColor = "text-slate-600", textColor = "text-slate-800" }) {
+    return (
+        <div className={`${color} ${border} border p-3 sm:p-4 rounded-xl text-center transition-all hover:shadow-md duration-200 shadow-sm`}>
+            <div className="flex justify-center mb-2">
+                <div className={`${iconBg} ${iconColor} p-1.5 rounded-lg`}>{icon}</div>
+            </div>
+            <div className={`text-xl sm:text-2xl font-black ${textColor}`}>{value}</div>
+            <div className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-500 mt-1">{label}</div>
+        </div>
+    );
+}
+
+function CollapsibleSection({ icon, title, count, color, badge, children, defaultOpen = true }) {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <button
+                onClick={() => setOpen(!open)}
+                className="w-full flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
+            >
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                    {icon} {title}
+                    {count > 0 && (
+                        <span className={`${badge} text-xs font-black px-2.5 py-0.5 rounded-full ml-1`}>{count}</span>
+                    )}
+                </h3>
+                {open ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
+            </button>
+            {open && <div className="px-5 pb-5">{children}</div>}
+        </div>
+    );
+}
+
+function TaskRow({ task }) {
+    return (
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border transition-colors ${
+            task.isLate ? "bg-red-50 border-red-200"
+            : task.isReturned ? "bg-orange-50 border-orange-200"
+            : task.isWaiting ? "bg-amber-50 border-amber-200"
+            : "bg-slate-50 border-slate-200"
+        }`}>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-800 text-sm truncate">{task.title}</span>
+                    {task.isLate && <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase whitespace-nowrap">Atrasada</span>}
+                    {task.isReturned && <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase whitespace-nowrap">Devolvida</span>}
+                </div>
+                <span className="text-[10px] text-slate-500">
+                    {task.role} · {task.date}
+                    {task.completedBy && ` · Enviada por: ${task.completedBy}`}
+                </span>
+            </div>
+            {task.due && (
+                <span className={`text-sm font-bold whitespace-nowrap ml-3 flex items-center gap-1 ${task.isLate ? "text-red-500" : "text-slate-500"}`}>
+                    <Clock size={12} /> {task.due}
+                </span>
+            )}
+        </div>
+    );
+}
+
+// ========================================================
+// COMPONENTE PRINCIPAL
+// ========================================================
 export default function AdminReports({ goBack, lojas }) {
     const hoje = getLocalDate();
 
@@ -25,9 +100,9 @@ export default function AdminReports({ goBack, lojas }) {
     const [loading, setLoading] = useState(false);
     const [counts, setCounts] = useState(null);
     const [byRole, setByRole] = useState([]);
-    const [byEmployee, setByEmployee] = useState([]);
     const [byRoutine, setByRoutine] = useState([]);
-    const [pendentes, setPendentes] = useState([]);
+    const [programadas, setProgramadas] = useState([]);
+    const [atrasadas, setAtrasadas] = useState([]);
     const [emRevisao, setEmRevisao] = useState([]);
     const [dailyTrend, setDailyTrend] = useState([]);
 
@@ -53,9 +128,7 @@ export default function AdminReports({ goBack, lojas }) {
             .gte("scheduled_date", dataInicio)
             .lte("scheduled_date", dataFim);
 
-        // 2. Se o período inclui hoje: busca tarefas de dias anteriores que ainda
-        //    estão na fila (atrasadas pendentes/devolvidas/em revisão) OU foram
-        //    concluídas/aprovadas hoje (scheduled em dia anterior, executadas hoje)
+        // 2. Se o período inclui hoje: busca atrasadas de dias anteriores
         let extraData = [];
         if (dataFim >= hoje) {
             const { data: od } = await baseQ()
@@ -68,9 +141,7 @@ export default function AdminReports({ goBack, lojas }) {
         const allItems = [...(rangeData || []), ...extraData];
         const uniqueById = [...new Map(allItems.map(i => [i.id, i])).values()];
 
-        // Deduplica tarefas atrasadas que já têm instância no período:
-        // se um template_id tem item PENDING de dia anterior E um item do período,
-        // o item do período prevalece (mesma lógica do kiosk)
+        // Deduplica por template_id (mesma lógica do kiosk)
         const seen = new Map();
         uniqueById.forEach(item => {
             const key = item.template_id || `raw-${item.id}`;
@@ -78,19 +149,16 @@ export default function AdminReports({ goBack, lojas }) {
                 seen.set(key, item);
             } else {
                 const existing = seen.get(key);
-                // Item do período (>= dataInicio) prevalece sobre atrasado
                 if (item.scheduled_date >= dataInicio && existing.scheduled_date < dataInicio) {
                     seen.set(key, item);
-                }
-                // Se ambos são do período, manter o mais recente
-                else if (item.scheduled_date > existing.scheduled_date) {
+                } else if (item.scheduled_date > existing.scheduled_date) {
                     seen.set(key, item);
                 }
             }
         });
         const items = Array.from(seen.values());
 
-        // 3. Busca nomes dos colaboradores que completaram tarefas + seus gestores
+        // 3. Busca nomes dos colaboradores
         const profileIds = [...new Set(items.map(i => i.completed_by).filter(Boolean))];
         let profilesData = [];
         if (profileIds.length > 0) {
@@ -100,9 +168,8 @@ export default function AdminReports({ goBack, lojas }) {
                 .in('id', profileIds);
             profilesData = pd || [];
 
-            // Busca nomes dos gestores
             const managerIds = [...new Set(profilesData.map(p => p.manager_id).filter(Boolean))]
-                .filter(mid => !profileIds.includes(mid)); // evita rebuscar quem já veio
+                .filter(mid => !profileIds.includes(mid));
             if (managerIds.length > 0) {
                 const { data: mgrs } = await supabase
                     .from('user_profiles')
@@ -112,7 +179,7 @@ export default function AdminReports({ goBack, lojas }) {
             }
         }
 
-        // 4. Rotinas com seus templates vinculados
+        // 4. Rotinas
         let routineQuery = supabase
             .from('routine_templates')
             .select('id, title, routine_items(task_template_id)');
@@ -124,26 +191,25 @@ export default function AdminReports({ goBack, lojas }) {
     }
 
     // ========================================================
-    // PROCESSAMENTO DOS DADOS
+    // PROCESSAMENTO
     // ========================================================
     function processData(items, empData, routines) {
-        // Mapa de colaboradores (id → {name, role, role_id, manager})
         const nameMap = {};
         (empData || []).forEach(e => { nameMap[e.id] = e.full_name; });
-        const empMap = {};
-        (empData || []).forEach(e => {
-            empMap[e.id] = {
-                name: e.full_name,
-                role: e.role?.name || '—',
-                role_id: e.role_id || null,
-                manager: e.manager_id ? (nameMap[e.manager_id] || '—') : '—',
-            };
-        });
 
-        // Helper: tarefa concluída = COMPLETED ou APPROVED
-        const isDone = (status) => status === 'COMPLETED' || status === 'APPROVED';
+        const nowStr = getNowTime();
+        const hojeLocal = getLocalDate();
 
-        // 1. CONTAGENS
+        // Classifica cada item
+        function classifyItem(item) {
+            const due = getEffectiveDueTime(item)?.slice(0, 5);
+            const isToday = item.scheduled_date === hojeLocal;
+            const isPastDate = item.scheduled_date < hojeLocal;
+            const isPastDue = due && isToday && nowStr > due;
+            return { due, isToday, isPastDate, isPastDue };
+        }
+
+        // 1. CONTAGENS GERAIS
         const c = { TOTAL: items.length, COMPLETED: 0, APPROVED: 0, PENDING: 0, WAITING_APPROVAL: 0, RETURNED: 0, CANCELED: 0 };
         items.forEach(i => { if (c[i.status] !== undefined) c[i.status]++; });
         const executaveis = c.TOTAL - c.CANCELED;
@@ -151,14 +217,26 @@ export default function AdminReports({ goBack, lojas }) {
         c.PERCENT = executaveis > 0 ? ((totalDone / executaveis) * 100).toFixed(0) : 0;
         setCounts(c);
 
-        // 2. POR CARGO
+        // 2. POR CARGO (tabela principal)
         const roleMap = {};
         items.forEach(i => {
             const rName = i.template?.role?.name || "Geral";
             const rId = i.template?.role_id || "geral";
-            if (!roleMap[rId]) roleMap[rId] = { name: rName, total: 0, done: 0 };
+            if (!roleMap[rId]) roleMap[rId] = { name: rName, total: 0, done: 0, scheduled: 0, late: 0, waiting: 0 };
             roleMap[rId].total++;
-            if (isDone(i.status)) roleMap[rId].done++;
+
+            if (isDone(i.status)) {
+                roleMap[rId].done++;
+            } else if (i.status === 'WAITING_APPROVAL') {
+                roleMap[rId].waiting++;
+            } else if (i.status === 'PENDING' || i.status === 'RETURNED') {
+                const { isPastDate, isPastDue } = classifyItem(i);
+                if (isPastDate || isPastDue) {
+                    roleMap[rId].late++;
+                } else {
+                    roleMap[rId].scheduled++;
+                }
+            }
         });
         setByRole(
             Object.values(roleMap)
@@ -166,47 +244,7 @@ export default function AdminReports({ goBack, lojas }) {
                 .sort((a, b) => b.pct - a.pct)
         );
 
-        // 3. POR FUNCIONÁRIO
-        // Tarefas são compartilhadas por cargo: quando qualquer funcionário do cargo
-        // completa a tarefa, ela está concluída para todos.
-        // ATRIBUÍDAS e CONCLUÍDAS = apenas o que o funcionário pessoalmente completou.
-        // Tarefas pendentes do cargo NÃO são atribuídas individualmente.
-
-        // Concluídas por funcionário (COMPLETED + APPROVED)
-        const empDoneCount = {};
-        items.forEach(i => {
-            if (i.completed_by && isDone(i.status)) {
-                empDoneCount[i.completed_by] = (empDoneCount[i.completed_by] || 0) + 1;
-            }
-        });
-
-        // Monta mapa: cada funcionário mostra apenas o que ele fez
-        const empTaskMap = {};
-        Object.keys(empDoneCount).forEach(empId => {
-            const emp = empMap[empId];
-            if (!emp) return;
-            const done = empDoneCount[empId];
-            empTaskMap[empId] = {
-                name: emp.name,
-                role: emp.role,
-                manager: emp.manager,
-                total: done,
-                done,
-            };
-        });
-        setByEmployee(
-            Object.values(empTaskMap)
-                .map(e => ({ ...e, pct: e.total > 0 ? (e.done / e.total) * 100 : 0 }))
-                .sort((a, b) => {
-                    const mgr = a.manager.localeCompare(b.manager, 'pt-BR');
-                    if (mgr !== 0) return mgr;
-                    const role = a.role.localeCompare(b.role, 'pt-BR');
-                    if (role !== 0) return role;
-                    return a.name.localeCompare(b.name, 'pt-BR');
-                })
-        );
-
-        // 4. POR ROTINA
+        // 3. POR ROTINA
         const tplToRoutine = {};
         (routines || []).forEach(rt => {
             (rt.routine_items || []).forEach(ri => {
@@ -230,47 +268,42 @@ export default function AdminReports({ goBack, lojas }) {
                 .sort((a, b) => b.pct - a.pct)
         );
 
-        // 5. PENDENTES / ATRASADAS
-        const nowStr = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-        const hoje = getLocalDate();
-        const pend = items
-            .filter(i => ["PENDING", "RETURNED"].includes(i.status))
-            .map(i => {
-                const due = getEffectiveDueTime(i)?.slice(0, 5);
-                return {
-                    id: i.id,
-                    title: i.template?.title || "—",
-                    role: i.template?.role?.name || "Geral",
-                    due,
-                    date: i.scheduled_date,
-                    isLate: due && i.scheduled_date === hoje ? nowStr > due : false,
-                    isReturned: i.status === "RETURNED",
-                };
-            })
-            .sort((a, b) => {
-                if (a.isLate && !b.isLate) return -1;
-                if (!a.isLate && b.isLate) return 1;
-                return (a.due || "99:99").localeCompare(b.due || "99:99");
-            });
-        setPendentes(pend);
+        // 4. LISTAS DE TAREFAS (3 categorias)
+        const openItems = items.filter(i => ['PENDING', 'RETURNED'].includes(i.status));
+        const waitingItems = items.filter(i => i.status === 'WAITING_APPROVAL');
 
-        // 6. EM REVISÃO (WAITING_APPROVAL)
-        const rev = items
-            .filter(i => i.status === 'WAITING_APPROVAL')
-            .map(i => {
-                const completedByName = i.completed_by ? (nameMap[i.completed_by] || '—') : '—';
-                return {
-                    id: i.id,
-                    title: i.template?.title || '—',
-                    role: i.template?.role?.name || 'Geral',
-                    date: i.scheduled_date,
-                    completedBy: completedByName,
-                };
-            })
-            .sort((a, b) => a.date.localeCompare(b.date));
-        setEmRevisao(rev);
+        const scheduledList = [];
+        const lateList = [];
 
-        // 7. TENDÊNCIA DIÁRIA
+        openItems.forEach(i => {
+            const { due, isPastDate, isPastDue } = classifyItem(i);
+            const row = {
+                id: i.id,
+                title: i.template?.title || "—",
+                role: i.template?.role?.name || "Geral",
+                due,
+                date: i.scheduled_date,
+                isLate: isPastDate || isPastDue,
+                isReturned: i.status === "RETURNED",
+            };
+            if (row.isLate) lateList.push(row);
+            else scheduledList.push(row);
+        });
+
+        const sortByDue = (a, b) => (a.due || "99:99").localeCompare(b.due || "99:99");
+        setProgramadas(scheduledList.sort(sortByDue));
+        setAtrasadas(lateList.sort(sortByDue));
+
+        setEmRevisao(waitingItems.map(i => ({
+            id: i.id,
+            title: i.template?.title || '—',
+            role: i.template?.role?.name || 'Geral',
+            date: i.scheduled_date,
+            completedBy: i.completed_by ? (nameMap[i.completed_by] || '—') : '—',
+            isWaiting: true,
+        })).sort((a, b) => a.date.localeCompare(b.date)));
+
+        // 5. TENDÊNCIA DIÁRIA
         const trendMap = {};
         items.forEach(i => {
             const d = i.scheduled_date;
@@ -317,9 +350,7 @@ export default function AdminReports({ goBack, lojas }) {
                 Painel Gerencial
             </h2>
 
-            {/* ============================== */}
             {/* FILTROS */}
-            {/* ============================== */}
             <div className="mb-6 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                     <Filter size={14} className="text-slate-400" />
@@ -342,23 +373,13 @@ export default function AdminReports({ goBack, lojas }) {
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                             <Calendar size={10} className="inline mr-1" />Data Início
                         </label>
-                        <input
-                            type="date"
-                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors"
-                            value={dataInicio}
-                            onChange={e => setDataInicio(e.target.value)}
-                        />
+                        <input type="date" className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
                     </div>
                     <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
                             <Calendar size={10} className="inline mr-1" />Data Fim
                         </label>
-                        <input
-                            type="date"
-                            className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors"
-                            value={dataFim}
-                            onChange={e => setDataFim(e.target.value)}
-                        />
+                        <input type="date" className="w-full bg-slate-50 border border-slate-200 text-slate-700 p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-colors" value={dataFim} onChange={e => setDataFim(e.target.value)} />
                     </div>
                     <button
                         onClick={buscarDashboard}
@@ -379,7 +400,7 @@ export default function AdminReports({ goBack, lojas }) {
             )}
 
             {/* ============================== */}
-            {/* DASHBOARD COMPLETO */}
+            {/* DASHBOARD */}
             {/* ============================== */}
             {counts && (
                 <div className="space-y-6">
@@ -388,7 +409,7 @@ export default function AdminReports({ goBack, lojas }) {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                         <SummaryCard icon={<BarChart3 size={20} />} label="Total" value={counts.TOTAL} color="bg-white" border="border-slate-200" iconBg="bg-slate-100" iconColor="text-slate-600" textColor="text-slate-800" />
                         <SummaryCard icon={<CheckCircle size={20} />} label="Concluídas" value={counts.COMPLETED + counts.APPROVED} color="bg-white" border="border-emerald-200" iconBg="bg-emerald-50" iconColor="text-emerald-600" textColor="text-emerald-700" />
-                        <SummaryCard icon={<Clock size={20} />} label="Pendentes" value={counts.PENDING} color="bg-white" border="border-red-200" iconBg="bg-red-50" iconColor="text-red-500" textColor="text-red-600" />
+                        <SummaryCard icon={<Clock size={20} />} label="Pendentes" value={counts.PENDING + counts.RETURNED} color="bg-white" border="border-red-200" iconBg="bg-red-50" iconColor="text-red-500" textColor="text-red-600" />
                         <SummaryCard icon={<Hourglass size={20} />} label="Em Revisão" value={counts.WAITING_APPROVAL} color="bg-white" border="border-amber-200" iconBg="bg-amber-50" iconColor="text-amber-600" textColor="text-amber-700" />
                     </div>
 
@@ -429,10 +450,7 @@ export default function AdminReports({ goBack, lojas }) {
                                     <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                                         <span className={`text-[8px] sm:text-[9px] font-bold leading-none ${pctColor(d.pct)}`}>{d.pct}%</span>
                                         <div className="w-full flex flex-col justify-end" style={{ height: '72px' }}>
-                                            <div
-                                                className={`w-full rounded-sm transition-all duration-700 ${pctBg(d.pct)}`}
-                                                style={{ height: `${Math.max(d.pct, 4)}%` }}
-                                            />
+                                            <div className={`w-full rounded-sm transition-all duration-700 ${pctBg(d.pct)}`} style={{ height: `${Math.max(d.pct, 4)}%` }} />
                                         </div>
                                         <span className="text-[7px] sm:text-[8px] text-slate-400 whitespace-nowrap truncate w-full text-center">
                                             {d.date.slice(8)}/{d.date.slice(5, 7)}
@@ -501,56 +519,34 @@ export default function AdminReports({ goBack, lojas }) {
                         </div>
                     )}
 
-                    {/* EFICIÊNCIA POR CARGO */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                            <Users size={18} className="text-teal-600" /> Eficiência por Cargo
-                        </h3>
-                        {byRole.length === 0 ? (
-                            <p className="text-slate-400 text-sm">Sem dados.</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {byRole.map(r => (
-                                    <div key={r.name}>
-                                        <div className="flex justify-between text-sm mb-1.5">
-                                            <span className="font-bold text-slate-700">{r.name}</span>
-                                            <span className={`font-black ${pctColor(r.pct)}`}>{r.done}/{r.total} ({r.pct.toFixed(0)}%)</span>
-                                        </div>
-                                        <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full transition-all duration-700 ${pctBg(r.pct)}`} style={{ width: `${r.pct}%` }} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* DESEMPENHO POR FUNCIONÁRIO */}
-                    {byEmployee.length > 0 && (
+                    {/* DESEMPENHO POR CARGO (tabela) */}
+                    {byRole.length > 0 && (
                         <div className="bg-white p-3 sm:p-5 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
                             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Users size={18} className="text-teal-600" /> Desempenho por Funcionário
+                                <Users size={18} className="text-teal-600" /> Desempenho por Cargo
                             </h3>
-                            <table className="w-full text-sm min-w-[680px]">
+                            <table className="w-full text-sm min-w-[600px]">
                                 <thead>
                                     <tr className="text-left text-[10px] uppercase text-slate-500 border-b-2 border-slate-100">
-                                        <th className="pb-3 pr-4">Gestor</th>
-                                        <th className="pb-3 pr-4">Funcionário</th>
                                         <th className="pb-3 pr-4">Cargo</th>
                                         <th className="pb-3 pr-4 text-center">Atribuídas</th>
+                                        <th className="pb-3 pr-4 text-center">Programadas</th>
+                                        <th className="pb-3 pr-4 text-center">Atrasadas</th>
+                                        <th className="pb-3 pr-4 text-center">Em Revisão</th>
                                         <th className="pb-3 pr-4 text-center">Concluídas</th>
-                                        <th className="pb-3 text-right">%</th>
+                                        <th className="pb-3 text-right">% Conclusão</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {byEmployee.map((e, idx) => (
+                                    {byRole.map((r, idx) => (
                                         <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                            <td className="py-3 pr-4 text-slate-400 text-xs whitespace-nowrap">{e.manager}</td>
-                                            <td className="py-3 pr-4 font-bold text-slate-800">{e.name}</td>
-                                            <td className="py-3 pr-4 text-slate-500">{e.role}</td>
-                                            <td className="py-3 pr-4 text-center text-slate-600 font-semibold">{e.total}</td>
-                                            <td className="py-3 pr-4 text-center text-slate-600 font-semibold">{e.done}</td>
-                                            <td className={`py-3 text-right font-black ${pctColor(e.pct)}`}>{e.pct.toFixed(0)}%</td>
+                                            <td className="py-3 pr-4 font-bold text-slate-800">{r.name}</td>
+                                            <td className="py-3 pr-4 text-center text-slate-600 font-semibold">{r.total}</td>
+                                            <td className="py-3 pr-4 text-center text-slate-600">{r.scheduled}</td>
+                                            <td className="py-3 pr-4 text-center">{r.late > 0 ? <span className="text-red-600 font-bold">{r.late}</span> : <span className="text-slate-400">0</span>}</td>
+                                            <td className="py-3 pr-4 text-center">{r.waiting > 0 ? <span className="text-amber-600 font-bold">{r.waiting}</span> : <span className="text-slate-400">0</span>}</td>
+                                            <td className="py-3 pr-4 text-center text-emerald-600 font-semibold">{r.done}</td>
+                                            <td className={`py-3 text-right font-black ${pctColor(r.pct)}`}>{r.pct.toFixed(0)}%</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -558,75 +554,51 @@ export default function AdminReports({ goBack, lojas }) {
                         </div>
                     )}
 
-                    {/* TAREFAS EM REVISÃO (WAITING_APPROVAL) */}
-                    {emRevisao.length > 0 && (
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Hourglass size={18} className="text-amber-500" /> Pendentes de Aprovação
-                                <span className="bg-amber-100 text-amber-600 text-xs font-black px-2.5 py-0.5 rounded-full ml-1">{emRevisao.length}</span>
-                            </h3>
+                    {/* TAREFAS PROGRAMADAS (colapsável) */}
+                    {programadas.length > 0 && (
+                        <CollapsibleSection
+                            icon={<CalendarClock size={18} className="text-blue-500" />}
+                            title="Tarefas Programadas"
+                            count={programadas.length}
+                            badge="bg-blue-100 text-blue-600"
+                            defaultOpen={false}
+                        >
                             <div className="space-y-2">
-                                {emRevisao.map(t => (
-                                    <div key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border bg-amber-50 border-amber-200">
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-bold text-slate-800 text-sm truncate block">{t.title}</span>
-                                            <span className="text-[10px] text-slate-500">{t.role} · {t.date} · Enviada por: {t.completedBy}</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                {programadas.map(t => <TaskRow key={t.id} task={t} />)}
                             </div>
-                        </div>
+                        </CollapsibleSection>
                     )}
 
-                    {/* TAREFAS PENDENTES / ATRASADAS */}
-                    {pendentes.length > 0 && (
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <AlertCircle size={18} className="text-red-500" /> Tarefas Pendentes
-                                <span className="bg-red-100 text-red-600 text-xs font-black px-2.5 py-0.5 rounded-full ml-1">{pendentes.length}</span>
-                            </h3>
+                    {/* TAREFAS ATRASADAS (colapsável) */}
+                    {atrasadas.length > 0 && (
+                        <CollapsibleSection
+                            icon={<AlertTriangle size={18} className="text-red-500" />}
+                            title="Tarefas Atrasadas"
+                            count={atrasadas.length}
+                            badge="bg-red-100 text-red-600"
+                        >
                             <div className="space-y-2">
-                                {pendentes.map(t => (
-                                    <div
-                                        key={t.id}
-                                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border transition-colors ${t.isLate ? "bg-red-50 border-red-200" : t.isReturned ? "bg-orange-50 border-orange-200" : "bg-slate-50 border-slate-200"}`}
-                                    >
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-slate-800 text-sm truncate">{t.title}</span>
-                                                {t.isLate && <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase whitespace-nowrap animate-pulse">Atrasada</span>}
-                                                {t.isReturned && <span className="bg-orange-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase whitespace-nowrap">Devolvida</span>}
-                                            </div>
-                                            <span className="text-[10px] text-slate-500">{t.role} · {t.date}</span>
-                                        </div>
-                                        {t.due && (
-                                            <span className={`text-sm font-bold whitespace-nowrap ml-3 flex items-center gap-1 ${t.isLate ? "text-red-500" : "text-slate-500"}`}>
-                                                <Clock size={12} /> {t.due}
-                                            </span>
-                                        )}
-                                    </div>
-                                ))}
+                                {atrasadas.map(t => <TaskRow key={t.id} task={t} />)}
                             </div>
-                        </div>
+                        </CollapsibleSection>
+                    )}
+
+                    {/* TAREFAS EM REVISÃO (colapsável) */}
+                    {emRevisao.length > 0 && (
+                        <CollapsibleSection
+                            icon={<Hourglass size={18} className="text-amber-500" />}
+                            title="Tarefas em Revisão"
+                            count={emRevisao.length}
+                            badge="bg-amber-100 text-amber-600"
+                        >
+                            <div className="space-y-2">
+                                {emRevisao.map(t => <TaskRow key={t.id} task={t} />)}
+                            </div>
+                        </CollapsibleSection>
                     )}
 
                 </div>
             )}
-        </div>
-    );
-}
-
-// ========================================================
-// SUB-COMPONENTE: Card de Resumo
-// ========================================================
-function SummaryCard({ icon, label, value, color, border, iconBg = "bg-slate-100", iconColor = "text-slate-600", textColor = "text-slate-800" }) {
-    return (
-        <div className={`${color} ${border} border p-3 sm:p-4 rounded-xl text-center transition-all hover:shadow-md duration-200 shadow-sm`}>
-            <div className="flex justify-center mb-2">
-                <div className={`${iconBg} ${iconColor} p-1.5 rounded-lg`}>{icon}</div>
-            </div>
-            <div className={`text-xl sm:text-2xl font-black ${textColor}`}>{value}</div>
-            <div className="text-[9px] sm:text-[10px] font-bold uppercase text-slate-500 mt-1">{label}</div>
         </div>
     );
 }
