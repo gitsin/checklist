@@ -28,6 +28,7 @@ export default function AdminReports({ goBack, lojas }) {
     const [byEmployee, setByEmployee] = useState([]);
     const [byRoutine, setByRoutine] = useState([]);
     const [pendentes, setPendentes] = useState([]);
+    const [emRevisao, setEmRevisao] = useState([]);
     const [dailyTrend, setDailyTrend] = useState([]);
 
     // ========================================================
@@ -65,7 +66,29 @@ export default function AdminReports({ goBack, lojas }) {
 
         // Mescla e deduplica por id
         const allItems = [...(rangeData || []), ...extraData];
-        const items = [...new Map(allItems.map(i => [i.id, i])).values()];
+        const uniqueById = [...new Map(allItems.map(i => [i.id, i])).values()];
+
+        // Deduplica tarefas atrasadas que já têm instância no período:
+        // se um template_id tem item PENDING de dia anterior E um item do período,
+        // o item do período prevalece (mesma lógica do kiosk)
+        const seen = new Map();
+        uniqueById.forEach(item => {
+            const key = item.template_id || `raw-${item.id}`;
+            if (!seen.has(key)) {
+                seen.set(key, item);
+            } else {
+                const existing = seen.get(key);
+                // Item do período (>= dataInicio) prevalece sobre atrasado
+                if (item.scheduled_date >= dataInicio && existing.scheduled_date < dataInicio) {
+                    seen.set(key, item);
+                }
+                // Se ambos são do período, manter o mais recente
+                else if (item.scheduled_date > existing.scheduled_date) {
+                    seen.set(key, item);
+                }
+            }
+        });
+        const items = Array.from(seen.values());
 
         // 3. Busca nomes dos colaboradores que completaram tarefas + seus gestores
         const profileIds = [...new Set(items.map(i => i.completed_by).filter(Boolean))];
@@ -117,11 +140,15 @@ export default function AdminReports({ goBack, lojas }) {
             };
         });
 
+        // Helper: tarefa concluída = COMPLETED ou APPROVED
+        const isDone = (status) => status === 'COMPLETED' || status === 'APPROVED';
+
         // 1. CONTAGENS
-        const c = { TOTAL: items.length, COMPLETED: 0, PENDING: 0, WAITING_APPROVAL: 0, RETURNED: 0, CANCELED: 0 };
+        const c = { TOTAL: items.length, COMPLETED: 0, APPROVED: 0, PENDING: 0, WAITING_APPROVAL: 0, RETURNED: 0, CANCELED: 0 };
         items.forEach(i => { if (c[i.status] !== undefined) c[i.status]++; });
         const executaveis = c.TOTAL - c.CANCELED;
-        c.PERCENT = executaveis > 0 ? ((c.COMPLETED / executaveis) * 100).toFixed(0) : 0;
+        const totalDone = c.COMPLETED + c.APPROVED;
+        c.PERCENT = executaveis > 0 ? ((totalDone / executaveis) * 100).toFixed(0) : 0;
         setCounts(c);
 
         // 2. POR CARGO
@@ -131,7 +158,7 @@ export default function AdminReports({ goBack, lojas }) {
             const rId = i.template?.role_id || "geral";
             if (!roleMap[rId]) roleMap[rId] = { name: rName, total: 0, done: 0 };
             roleMap[rId].total++;
-            if (i.status === "COMPLETED") roleMap[rId].done++;
+            if (isDone(i.status)) roleMap[rId].done++;
         });
         setByRole(
             Object.values(roleMap)
@@ -140,44 +167,31 @@ export default function AdminReports({ goBack, lojas }) {
         );
 
         // 3. POR FUNCIONÁRIO
-        // Total de tarefas por role_id (para calcular ATRIBUÍDAS)
-        const roleTaskCount = {};
-        items.forEach(i => {
-            const rId = i.template?.role_id;
-            if (rId) roleTaskCount[rId] = (roleTaskCount[rId] || 0) + 1;
-        });
-        // Concluídas por funcionário
+        // Tarefas são compartilhadas por cargo: quando qualquer funcionário do cargo
+        // completa a tarefa, ela está concluída para todos.
+        // ATRIBUÍDAS e CONCLUÍDAS = apenas o que o funcionário pessoalmente completou.
+        // Tarefas pendentes do cargo NÃO são atribuídas individualmente.
+
+        // Concluídas por funcionário (COMPLETED + APPROVED)
         const empDoneCount = {};
         items.forEach(i => {
-            if (i.completed_by && i.status === 'COMPLETED') {
+            if (i.completed_by && isDone(i.status)) {
                 empDoneCount[i.completed_by] = (empDoneCount[i.completed_by] || 0) + 1;
             }
         });
-        // Monta mapa: cada funcionário que completou ao menos 1 tarefa
-        // ATRIBUÍDAS = total de tarefas do seu cargo; CONCLUÍDAS = as que ele completou
+
+        // Monta mapa: cada funcionário mostra apenas o que ele fez
         const empTaskMap = {};
         Object.keys(empDoneCount).forEach(empId => {
             const emp = empMap[empId];
             if (!emp) return;
+            const done = empDoneCount[empId];
             empTaskMap[empId] = {
                 name: emp.name,
                 role: emp.role,
                 manager: emp.manager,
-                total: roleTaskCount[emp.role_id] || 0,
-                done: empDoneCount[empId],
-            };
-        });
-        // Adiciona funcionários que não completaram nada mas têm tarefas no cargo
-        Object.entries(empMap).forEach(([empId, emp]) => {
-            if (empTaskMap[empId]) return; // já adicionado
-            const total = roleTaskCount[emp.role_id] || 0;
-            if (total === 0) return;
-            empTaskMap[empId] = {
-                name: emp.name,
-                role: emp.role,
-                manager: emp.manager,
-                total,
-                done: 0,
+                total: done,
+                done,
             };
         });
         setByEmployee(
@@ -205,7 +219,7 @@ export default function AdminReports({ goBack, lojas }) {
             if (!rt) return;
             if (!routineMap[rt.id]) routineMap[rt.id] = { title: rt.title, total: 0, done: 0, pending: 0, returned: 0, waiting: 0 };
             routineMap[rt.id].total++;
-            if (item.status === 'COMPLETED') routineMap[rt.id].done++;
+            if (isDone(item.status)) routineMap[rt.id].done++;
             else if (item.status === 'PENDING') routineMap[rt.id].pending++;
             else if (item.status === 'RETURNED') routineMap[rt.id].returned++;
             else if (item.status === 'WAITING_APPROVAL') routineMap[rt.id].waiting++;
@@ -240,13 +254,29 @@ export default function AdminReports({ goBack, lojas }) {
             });
         setPendentes(pend);
 
-        // 6. TENDÊNCIA DIÁRIA
+        // 6. EM REVISÃO (WAITING_APPROVAL)
+        const rev = items
+            .filter(i => i.status === 'WAITING_APPROVAL')
+            .map(i => {
+                const completedByName = i.completed_by ? (nameMap[i.completed_by] || '—') : '—';
+                return {
+                    id: i.id,
+                    title: i.template?.title || '—',
+                    role: i.template?.role?.name || 'Geral',
+                    date: i.scheduled_date,
+                    completedBy: completedByName,
+                };
+            })
+            .sort((a, b) => a.date.localeCompare(b.date));
+        setEmRevisao(rev);
+
+        // 7. TENDÊNCIA DIÁRIA
         const trendMap = {};
         items.forEach(i => {
             const d = i.scheduled_date;
             if (!trendMap[d]) trendMap[d] = { date: d, total: 0, done: 0 };
             trendMap[d].total++;
-            if (i.status === 'COMPLETED') trendMap[d].done++;
+            if (isDone(i.status)) trendMap[d].done++;
         });
         setDailyTrend(
             Object.values(trendMap)
@@ -357,7 +387,7 @@ export default function AdminReports({ goBack, lojas }) {
                     {/* CARDS DE RESUMO */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                         <SummaryCard icon={<BarChart3 size={20} />} label="Total" value={counts.TOTAL} color="bg-white" border="border-slate-200" iconBg="bg-slate-100" iconColor="text-slate-600" textColor="text-slate-800" />
-                        <SummaryCard icon={<CheckCircle size={20} />} label="Concluídas" value={counts.COMPLETED} color="bg-white" border="border-emerald-200" iconBg="bg-emerald-50" iconColor="text-emerald-600" textColor="text-emerald-700" />
+                        <SummaryCard icon={<CheckCircle size={20} />} label="Concluídas" value={counts.COMPLETED + counts.APPROVED} color="bg-white" border="border-emerald-200" iconBg="bg-emerald-50" iconColor="text-emerald-600" textColor="text-emerald-700" />
                         <SummaryCard icon={<Clock size={20} />} label="Pendentes" value={counts.PENDING} color="bg-white" border="border-red-200" iconBg="bg-red-50" iconColor="text-red-500" textColor="text-red-600" />
                         <SummaryCard icon={<Hourglass size={20} />} label="Em Revisão" value={counts.WAITING_APPROVAL} color="bg-white" border="border-amber-200" iconBg="bg-amber-50" iconColor="text-amber-600" textColor="text-amber-700" />
                     </div>
@@ -372,7 +402,7 @@ export default function AdminReports({ goBack, lojas }) {
                         </div>
                         <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex">
                             {counts.TOTAL > 0 && (<>
-                                <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${(counts.COMPLETED / counts.TOTAL) * 100}%` }} title={`Concluídas: ${counts.COMPLETED}`} />
+                                <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${((counts.COMPLETED + counts.APPROVED) / counts.TOTAL) * 100}%` }} title={`Concluídas: ${counts.COMPLETED + counts.APPROVED}`} />
                                 <div className="bg-amber-400 h-full transition-all duration-500" style={{ width: `${(counts.WAITING_APPROVAL / counts.TOTAL) * 100}%` }} title={`Em Revisão: ${counts.WAITING_APPROVAL}`} />
                                 <div className="bg-orange-400 h-full transition-all duration-500" style={{ width: `${(counts.RETURNED / counts.TOTAL) * 100}%` }} title={`Devolvidas: ${counts.RETURNED}`} />
                                 <div className="bg-red-400 h-full transition-all duration-500" style={{ width: `${(counts.PENDING / counts.TOTAL) * 100}%` }} title={`Pendentes: ${counts.PENDING}`} />
@@ -525,6 +555,26 @@ export default function AdminReports({ goBack, lojas }) {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {/* TAREFAS EM REVISÃO (WAITING_APPROVAL) */}
+                    {emRevisao.length > 0 && (
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Hourglass size={18} className="text-amber-500" /> Pendentes de Aprovação
+                                <span className="bg-amber-100 text-amber-600 text-xs font-black px-2.5 py-0.5 rounded-full ml-1">{emRevisao.length}</span>
+                            </h3>
+                            <div className="space-y-2">
+                                {emRevisao.map(t => (
+                                    <div key={t.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border bg-amber-50 border-amber-200">
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-slate-800 text-sm truncate block">{t.title}</span>
+                                            <span className="text-[10px] text-slate-500">{t.role} · {t.date} · Enviada por: {t.completedBy}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 

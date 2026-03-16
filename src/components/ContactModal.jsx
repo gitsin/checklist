@@ -49,7 +49,10 @@ export default function ContactModal({ open, onClose }) {
         const path = `contact/${Date.now()}-${file.name}`;
         const { error: upErr } = await supabase.storage
           .from('contact-attachments')
-          .upload(path, file);
+          .upload(path, file, {
+            cacheControl: '5184000',
+            upsert: false,
+          });
         if (!upErr) {
           const { data: urlData } = supabase.storage
             .from('contact-attachments')

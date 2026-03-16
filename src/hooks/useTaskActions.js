@@ -100,11 +100,16 @@ export function useTaskActions(user, fetchData) {
 
       if (photoFile) {
         const orgPrefix = user.organization_id ? `${user.organization_id}/` : '';
-        const fileName = `${orgPrefix}${user.store_id}/${taskId}_${Date.now()}.jpg`;
+        const ext = photoFile.type === 'image/webp' ? 'webp' : 'jpg';
+        const fileName = `${orgPrefix}${user.store_id}/${taskId}_${Date.now()}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
           .from('task-evidence')
-          .upload(fileName, photoFile, { contentType: photoFile.type });
+          .upload(fileName, photoFile, {
+            contentType: photoFile.type,
+            cacheControl: '5184000',
+            upsert: false,
+          });
 
         if (uploadError) {
           throw new Error(`Erro no upload da foto: ${uploadError.message}`);
