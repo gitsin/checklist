@@ -123,22 +123,31 @@ export default function AdminReports({ goBack, lojas }) {
             return q;
         }
 
-        // 1. Tarefas agendadas no período selecionado
-        const { data: rangeData } = await baseQ()
-            .gte("scheduled_date", dataInicio)
-            .lte("scheduled_date", dataFim);
-
-        // 2. Se o período inclui hoje: busca atrasadas de dias anteriores
-        let extraData = [];
+        // 1+2. Tarefas do período + atrasadas (em paralelo)
+        const queries = [
+            baseQ().gte("scheduled_date", dataInicio).lte("scheduled_date", dataFim),
+        ];
         if (dataFim >= hoje) {
-            const { data: od } = await baseQ()
-                .lt("scheduled_date", dataInicio)
-                .or(`status.in.(PENDING,RETURNED,WAITING_APPROVAL),completed_at.gte.${hoje}T00:00:00`);
-            extraData = od || [];
+            queries.push(
+                baseQ().lt("scheduled_date", dataInicio)
+                    .or(`status.in.(PENDING,RETURNED,WAITING_APPROVAL),completed_at.gte.${hoje}T00:00:00`)
+            );
         }
 
+        // 4. Rotinas (independente — pode rodar em paralelo)
+        let routineQuery = supabase
+            .from('routine_templates')
+            .select('id, title, routine_items(task_template_id)');
+        if (lojaId !== 'all') routineQuery = routineQuery.eq('store_id', lojaId);
+
+        const [rangeResult, extraResult, routineResult] = await Promise.all([
+            queries[0],
+            queries[1] || Promise.resolve({ data: [] }),
+            routineQuery,
+        ]);
+
         // Mescla e deduplica por id
-        const allItems = [...(rangeData || []), ...extraData];
+        const allItems = [...(rangeResult.data || []), ...(extraResult.data || [])];
         const uniqueById = [...new Map(allItems.map(i => [i.id, i])).values()];
 
         // Deduplica por template_id (mesma lógica do kiosk)
@@ -158,7 +167,7 @@ export default function AdminReports({ goBack, lojas }) {
         });
         const items = Array.from(seen.values());
 
-        // 3. Busca nomes dos colaboradores
+        // 3. Busca nomes dos colaboradores (depende dos items)
         const profileIds = [...new Set(items.map(i => i.completed_by).filter(Boolean))];
         let profilesData = [];
         if (profileIds.length > 0) {
@@ -179,12 +188,7 @@ export default function AdminReports({ goBack, lojas }) {
             }
         }
 
-        // 4. Rotinas
-        let routineQuery = supabase
-            .from('routine_templates')
-            .select('id, title, routine_items(task_template_id)');
-        if (lojaId !== 'all') routineQuery = routineQuery.eq('store_id', lojaId);
-        const { data: routinesData } = await routineQuery;
+        const routinesData = routineResult.data;
 
         processData(items, profilesData, routinesData || []);
         setLoading(false);
@@ -213,9 +217,17 @@ export default function AdminReports({ goBack, lojas }) {
         const c = { TOTAL: items.length, COMPLETED: 0, APPROVED: 0, PENDING: 0, WAITING_APPROVAL: 0, RETURNED: 0, CANCELED: 0 };
         items.forEach(i => { if (c[i.status] !== undefined) c[i.status]++; });
         const executaveis = c.TOTAL - c.CANCELED;
-        const totalDone = c.COMPLETED + c.APPROVED;
-        c.PERCENT = executaveis > 0 ? ((totalDone / executaveis) * 100).toFixed(0) : 0;
+        c.DONE = c.COMPLETED + c.APPROVED;
+        c.PERCENT = executaveis > 0 ? ((c.DONE / executaveis) * 100).toFixed(0) : 0;
         setCounts(c);
+
+        // Pré-classifica items abertos (evita chamar classifyItem 2x)
+        const classificationCache = new Map();
+        items.forEach(i => {
+            if (i.status === 'PENDING' || i.status === 'RETURNED') {
+                classificationCache.set(i.id, classifyItem(i));
+            }
+        });
 
         // 2. POR CARGO (tabela principal)
         const roleMap = {};
@@ -229,11 +241,11 @@ export default function AdminReports({ goBack, lojas }) {
                 roleMap[rId].done++;
             } else if (i.status === 'WAITING_APPROVAL') {
                 roleMap[rId].waiting++;
-            } else if (i.status === 'PENDING' || i.status === 'RETURNED') {
-                const { isPastDate, isPastDue } = classifyItem(i);
-                if (isPastDate || isPastDue) {
+            } else {
+                const cls = classificationCache.get(i.id);
+                if (cls && (cls.isPastDate || cls.isPastDue)) {
                     roleMap[rId].late++;
-                } else {
+                } else if (cls) {
                     roleMap[rId].scheduled++;
                 }
             }
@@ -276,7 +288,8 @@ export default function AdminReports({ goBack, lojas }) {
         const lateList = [];
 
         openItems.forEach(i => {
-            const { due, isPastDate, isPastDue } = classifyItem(i);
+            const cached = classificationCache.get(i.id) || classifyItem(i);
+            const { due, isPastDate, isPastDue } = cached;
             const row = {
                 id: i.id,
                 title: i.template?.title || "—",
@@ -408,7 +421,7 @@ export default function AdminReports({ goBack, lojas }) {
                     {/* CARDS DE RESUMO */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                         <SummaryCard icon={<BarChart3 size={20} />} label="Total" value={counts.TOTAL} color="bg-white" border="border-slate-200" iconBg="bg-slate-100" iconColor="text-slate-600" textColor="text-slate-800" />
-                        <SummaryCard icon={<CheckCircle size={20} />} label="Concluídas" value={counts.COMPLETED + counts.APPROVED} color="bg-white" border="border-emerald-200" iconBg="bg-emerald-50" iconColor="text-emerald-600" textColor="text-emerald-700" />
+                        <SummaryCard icon={<CheckCircle size={20} />} label="Concluídas" value={counts.DONE} color="bg-white" border="border-emerald-200" iconBg="bg-emerald-50" iconColor="text-emerald-600" textColor="text-emerald-700" />
                         <SummaryCard icon={<Clock size={20} />} label="Pendentes" value={counts.PENDING + counts.RETURNED} color="bg-white" border="border-red-200" iconBg="bg-red-50" iconColor="text-red-500" textColor="text-red-600" />
                         <SummaryCard icon={<Hourglass size={20} />} label="Em Revisão" value={counts.WAITING_APPROVAL} color="bg-white" border="border-amber-200" iconBg="bg-amber-50" iconColor="text-amber-600" textColor="text-amber-700" />
                     </div>
@@ -423,7 +436,7 @@ export default function AdminReports({ goBack, lojas }) {
                         </div>
                         <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex">
                             {counts.TOTAL > 0 && (<>
-                                <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${((counts.COMPLETED + counts.APPROVED) / counts.TOTAL) * 100}%` }} title={`Concluídas: ${counts.COMPLETED + counts.APPROVED}`} />
+                                <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${(counts.DONE / counts.TOTAL) * 100}%` }} title={`Concluídas: ${counts.DONE}`} />
                                 <div className="bg-amber-400 h-full transition-all duration-500" style={{ width: `${(counts.WAITING_APPROVAL / counts.TOTAL) * 100}%` }} title={`Em Revisão: ${counts.WAITING_APPROVAL}`} />
                                 <div className="bg-orange-400 h-full transition-all duration-500" style={{ width: `${(counts.RETURNED / counts.TOTAL) * 100}%` }} title={`Devolvidas: ${counts.RETURNED}`} />
                                 <div className="bg-red-400 h-full transition-all duration-500" style={{ width: `${(counts.PENDING / counts.TOTAL) * 100}%` }} title={`Pendentes: ${counts.PENDING}`} />
@@ -467,16 +480,19 @@ export default function AdminReports({ goBack, lojas }) {
                     )}
 
                     {/* CARGOS EM ATENÇÃO */}
-                    {byRole.filter(r => r.pct < 60 && r.total > 0).length > 0 && (
+                    {(() => {
+                        const lowPerf = byRole.filter(r => r.pct < 60 && r.total > 0);
+                        if (lowPerf.length === 0) return null;
+                        return (
                         <div className="bg-amber-50 p-5 rounded-xl border border-amber-200 shadow-sm">
                             <h3 className="font-bold text-amber-800 mb-3 flex items-center gap-2">
                                 <AlertCircle size={18} className="text-amber-600" /> Atenção — Baixo Desempenho
                                 <span className="bg-amber-200 text-amber-800 text-xs font-black px-2.5 py-0.5 rounded-full ml-1">
-                                    {byRole.filter(r => r.pct < 60 && r.total > 0).length}
+                                    {lowPerf.length}
                                 </span>
                             </h3>
                             <div className="space-y-2">
-                                {byRole.filter(r => r.pct < 60 && r.total > 0).map((r, idx) => (
+                                {lowPerf.map((r, idx) => (
                                     <div key={idx} className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-lg px-4 py-2.5">
                                         <span className="font-bold text-slate-800 text-sm">{r.name}</span>
                                         <div className="flex items-center gap-3 shrink-0">
@@ -487,7 +503,8 @@ export default function AdminReports({ goBack, lojas }) {
                                 ))}
                             </div>
                         </div>
-                    )}
+                        );
+                    })()}
 
                     {/* DESEMPENHO POR ROTINA */}
                     {byRoutine.length > 0 && (
