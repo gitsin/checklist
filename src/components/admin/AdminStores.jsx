@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../../supabaseClient";
+import { useStoreLimit } from "../../hooks/useStoreLimit";
+import StoreLimitUpgradeModal from "./StoreLimitUpgradeModal";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, MessageCircle } from "lucide-react";
 
 export default function AdminStores({ goBack, lojas, onUpdate, orgId }) {
@@ -8,8 +10,12 @@ export default function AdminStores({ goBack, lojas, onUpdate, orgId }) {
   const [lojaEmEdicao, setLojaEmEdicao] = useState(null);
   const [editLojaData, setEditLojaData] = useState({ name: "", shortName: "", code: "", whatsapp_phone: "", whatsapp_api_key: "", whatsapp_enabled: false });
 
+  const { upgradeInfo, setUpgradeInfo, saving, checkBeforeCreate, addSlots } = useStoreLimit(orgId);
+
   async function criarLoja() {
     if (!novaLojaNome) return alert("Digite o nome da loja");
+    const allowed = await checkBeforeCreate();
+    if (!allowed) return;
     const { error } = await supabase.from("stores").insert({ name: novaLojaNome, timezone: 'America/Sao_Paulo', active: true, organization_id: orgId });
     if (error) alert("Erro: " + error.message); else { setNovaLojaNome(""); onUpdate(); }
   }
@@ -77,6 +83,20 @@ export default function AdminStores({ goBack, lojas, onUpdate, orgId }) {
             <button onClick={() => setModalEditarLojaOpen(false)} className="mt-2 w-full text-slate-400 hover:text-slate-600 py-3 min-h-[44px] font-semibold rounded-xl hover:bg-slate-50 transition-all">Cancelar</button>
           </div>
         </div>
+      )}
+
+      {/* MODAL UPGRADE (Adicionar Lojas) */}
+      {upgradeInfo && (
+        <StoreLimitUpgradeModal
+          upgradeInfo={upgradeInfo}
+          saving={saving}
+          onConfirm={async (qty) => {
+            const ok = await addSlots(qty);
+            if (ok) onUpdate();
+            return ok;
+          }}
+          onClose={() => setUpgradeInfo(null)}
+        />
       )}
     </div>
   );

@@ -59,6 +59,7 @@ const mockSubscriptions = [
     current_period_end: '2026-03-31T23:59:59Z',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-03-01T00:00:00Z',
+    asaas_subscription_id: 'sub_asaas_123',
     organizations: { name: 'Org Alpha', slug: 'org-alpha', billing_email: 'billing@alpha.com' },
   },
   {

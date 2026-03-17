@@ -11,6 +11,7 @@ const mockChain = () => {
     update: vi.fn(() => chain),
     eq: vi.fn(() => chain),
     neq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
     or: vi.fn(() => chain),
     order: vi.fn(() => chain),
     single: vi.fn(() => chain),

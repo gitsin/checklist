@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
+import { formatPrice } from '../../utils/formatPrice';
 import { ArrowLeft, Plus, X, DollarSign, ToggleLeft, ToggleRight, CalendarDays, BadgeCheck } from 'lucide-react';
-
-function formatPrice(value) {
-  return `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function isCurrentlyActive(plan) {
   if (!plan.active) return false;

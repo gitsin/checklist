@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
+import { gerarSlug } from "../../utils/slugify";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, Building2, X, Info } from "lucide-react";
 
 export default function AdminOrganizations({ goBack }) {
@@ -17,18 +18,13 @@ export default function AdminOrganizations({ goBack }) {
     setLoading(true);
     const { data } = await supabase
       .from("organizations")
-      .select("*, restaurant_groups(count), stores(count)")
+      .select("*, restaurant_groups(count), stores(count), subscriptions(max_stores, status)")
+      .not("stores.restaurant_group_id", "is", null)
       .order("name");
     setOrgs(data || []);
     setLoading(false);
   }
 
-  function gerarSlug(name) {
-    return name.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-  }
 
   async function criarOrg() {
     if (!novaOrg.name.trim()) return alert("Preencha o nome da organização");
@@ -75,7 +71,7 @@ export default function AdminOrganizations({ goBack }) {
     buscarOrgs();
   }
 
-  const planLabels = { trial: "Trial", starter: "Starter", professional: "Professional", enterprise: "Enterprise" };
+  const planLabels = { trial: "Trial", standard: "Assinatura", starter: "Assinatura", professional: "Assinatura", enterprise: "Assinatura" };
 
   return (
     <div className="animate-fade-in">
@@ -109,13 +105,18 @@ export default function AdminOrganizations({ goBack }) {
                   <Building2 size={18} className={org.active ? 'text-indigo-500' : 'text-slate-400'} />
                   {org.name}
                 </div>
-                <div className="flex gap-2 mt-2 flex-wrap">
+                <div className="flex gap-2 mt-2 flex-wrap items-center">
                   <span className="text-[10px] font-bold uppercase bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
                     {planLabels[org.plan] || org.plan}
                   </span>
                   <span className="text-[10px] font-bold text-slate-400">
                     {org.stores?.[0]?.count || 0} lojas · {org.restaurant_groups?.[0]?.count || 0} grupos
                   </span>
+                  {org.subscriptions?.[0]?.max_stores && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      {org.subscriptions[0].max_stores} contratadas
+                    </span>
+                  )}
                 </div>
                 {org.billing_email && (
                   <div className="text-xs text-slate-400 mt-1">{org.billing_email}</div>
@@ -167,9 +168,7 @@ export default function AdminOrganizations({ goBack }) {
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Plano</label>
                 <select className="border border-slate-200 p-3 w-full rounded-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" value={novaOrg.plan} onChange={e => setNovaOrg({ ...novaOrg, plan: e.target.value })}>
                   <option value="trial">Trial</option>
-                  <option value="starter">Starter</option>
-                  <option value="professional">Professional</option>
-                  <option value="enterprise">Enterprise</option>
+                  <option value="standard">Assinatura</option>
                 </select>
               </div>
               <div>
@@ -210,9 +209,7 @@ export default function AdminOrganizations({ goBack }) {
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Plano</label>
                 <select className="border border-slate-200 p-3 w-full rounded-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" value={editOrg.plan} onChange={e => setEditOrg({ ...editOrg, plan: e.target.value })}>
                   <option value="trial">Trial</option>
-                  <option value="starter">Starter</option>
-                  <option value="professional">Professional</option>
-                  <option value="enterprise">Enterprise</option>
+                  <option value="standard">Assinatura</option>
                 </select>
               </div>
               <div>

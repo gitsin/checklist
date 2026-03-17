@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ChevronRight, LogOut, Building2, FolderTree, ShieldCheck, DollarSign, CreditCard
+  Store, User, Settings, ListChecks, BarChart3, Layers, Briefcase, ChevronRight, LogOut, Building2, FolderTree, ShieldCheck, DollarSign, CreditCard, Network
 } from "lucide-react";
 
 import AdminStores from "./admin/AdminStores";
@@ -17,6 +17,7 @@ import AdminGroups from "./admin/AdminGroups";
 import AdminUsuarios from "./admin/AdminUsuarios";
 import AdminPricing from "./admin/AdminPricing";
 import AdminSubscriptions from "./admin/AdminSubscriptions";
+import AdminOrgChart from "./admin/AdminOrgChart";
 
 export default function AdminArea() {
   const navigate = useNavigate();
@@ -74,6 +75,7 @@ export default function AdminArea() {
     usuarios: 'Usuários',
     precos: 'Preços',
     assinaturas: 'Assinaturas',
+    organograma: 'Organograma',
   };
 
   return (
@@ -117,7 +119,12 @@ export default function AdminArea() {
                       <Building2 size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Organizações</span>
                     </button>
                   )}
-                  {(isSuperAdmin || isHoldingOwner) && (
+                  {isHoldingOwner && !isSuperAdmin && (
+                    <button onClick={() => setScreen('organograma')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-violet-50 border border-slate-200 hover:border-violet-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-violet-600">
+                      <Network size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Organograma</span>
+                    </button>
+                  )}
+                  {isSuperAdmin && (
                     <button onClick={() => setScreen('grupos')} className="bg-white p-5 sm:p-8 rounded-xl hover:bg-violet-50 border border-slate-200 hover:border-violet-300 flex flex-col items-center gap-2 sm:gap-4 transition-all shadow-sm hover:shadow-lg cursor-pointer duration-200 min-h-[100px] text-slate-700 hover:text-violet-600">
                       <FolderTree size={32} className="sm:w-10 sm:h-10" /> <span className="font-bold text-sm sm:text-base">Grupos</span>
                     </button>
@@ -172,6 +179,7 @@ export default function AdminArea() {
           <AdminSubscriptions goBack={goBack} orgId={orgId} isSuperAdmin={isSuperAdmin} />
         )}
         {screen === 'grupos' && <AdminGroups goBack={goBack} orgId={orgId} isSuperAdmin={isSuperAdmin} />}
+        {screen === 'organograma' && <AdminOrgChart goBack={goBack} orgId={orgId} orgName={orgName} lojas={lojas} onUpdate={buscarDadosGlobais} />}
         {screen === 'usuarios' && (isSuperAdmin || isHoldingOwner || isGroupDirector) && (
           <AdminUsuarios
             goBack={goBack}

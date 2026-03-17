@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
+import { gerarSlug } from "../../utils/slugify";
 import { ArrowLeft, Plus, Pencil, ToggleLeft, ToggleRight, FolderTree, X, Info, Store, Minus, Link, Check } from "lucide-react";
 
 export default function AdminGroups({ goBack, orgId, isSuperAdmin }) {
@@ -69,12 +70,6 @@ export default function AdminGroups({ goBack, orgId, isSuperAdmin }) {
     setLoading(false);
   }
 
-  function gerarSlug(name) {
-    return name.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-  }
 
   async function criarGrupo() {
     if (!novoGrupo.name.trim()) return alert("Preencha o nome do grupo");
@@ -127,17 +122,28 @@ export default function AdminGroups({ goBack, orgId, isSuperAdmin }) {
 
   async function fetchLojasPorGrupo(groupId) {
     setLoadingLojas(true);
-    const [vinculadas, disponiveis] = await Promise.all([
-      supabase.from("stores").select("id, name, shortName").eq("restaurant_group_id", groupId).eq("active", true).order("name"),
-      supabase.from("stores").select("id, name, shortName").eq("organization_id", activeOrgId).eq("active", true).or(`restaurant_group_id.is.null,restaurant_group_id.neq.${groupId}`).order("name"),
+
+    // Query 1: vinculadas ao grupo
+    const vinculadasQuery = supabase.from("stores").select("id, name, shortName").eq("restaurant_group_id", groupId).eq("active", true).order("name");
+    // Query 2: sem grupo (super admin vê todas; demais só da própria org)
+    let semGrupoQuery = supabase.from("stores").select("id, name, shortName, organization_id").is("restaurant_group_id", null).eq("active", true);
+    if (!isSuperAdmin) semGrupoQuery = semGrupoQuery.eq("organization_id", activeOrgId);
+
+    const [vinculadas, semGrupo] = await Promise.all([
+      vinculadasQuery,
+      semGrupoQuery.order("name"),
     ]);
     setLojasVinculadas(vinculadas.data || []);
-    setLojasDisponiveis(disponiveis.data || []);
+    setLojasDisponiveis(semGrupo.data || []);
     setLoadingLojas(false);
   }
 
   async function adicionarLoja(storeId) {
-    const { error } = await supabase.from("stores").update({ restaurant_group_id: lojasGrupo.id }).eq("id", storeId);
+    // Super admin pode mover lojas entre orgs; demais só vinculam dentro da própria org
+    const updateData = { restaurant_group_id: lojasGrupo.id };
+    if (isSuperAdmin) updateData.organization_id = activeOrgId;
+
+    const { error } = await supabase.from("stores").update(updateData).eq("id", storeId);
     if (error) return alert("Um erro ocorreu, por favor tente novamente.");
     await fetchLojasPorGrupo(lojasGrupo.id);
     buscarGrupos();
@@ -157,8 +163,10 @@ export default function AdminGroups({ goBack, orgId, isSuperAdmin }) {
           <ArrowLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar
         </button>
         <button
-          onClick={() => { setNovoGrupo({ name: "", description: "" }); setModalNovoOpen(true); }}
-          disabled={!activeOrgId}
+          onClick={() => {
+            if (!activeOrgId) return alert("Selecione uma organização primeiro");
+            setNovoGrupo({ name: "", description: "" }); setModalNovoOpen(true);
+          }}
           className="bg-gradient-to-r from-violet-500 to-violet-600 text-white px-4 py-2.5 rounded-xl font-bold hover:from-violet-600 hover:to-violet-700 shadow-md hover:shadow-lg flex items-center gap-2 transition-all active:scale-[0.97] cursor-pointer disabled:opacity-50"
         >
           <Plus size={16} /> Novo Grupo

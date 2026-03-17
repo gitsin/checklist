@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
-import { ArrowLeft, CreditCard, Pencil, X, AlertTriangle, Plus, Minus, ShieldAlert } from 'lucide-react';
-
-function formatPrice(value) {
-  return `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { formatPrice } from '../../utils/formatPrice';
+import { ArrowLeft, CreditCard, Pencil, X, AlertTriangle, Plus, Minus, ShieldAlert, Rocket } from 'lucide-react';
+import AdminCheckout from './AdminCheckout';
 
 function getStatusConfig(status) {
   const map = {
@@ -49,6 +47,7 @@ export default function AdminSubscriptions({ goBack, orgId, isSuperAdmin }) {
   const [cancelStep, setCancelStep] = useState(1);
   const [cancelConfirmText, setCancelConfirmText] = useState('');
   const [ownerSaving, setOwnerSaving] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -304,11 +303,25 @@ export default function AdminSubscriptions({ goBack, orgId, isSuperAdmin }) {
       );
     }
 
+    // ── Checkout flow ──────────────────────────────────────────────
+    if (showCheckout) {
+      return (
+        <AdminCheckout
+          subscription={ownerSub}
+          orgName={ownerSub.organizations?.name}
+          orgId={ownerSub.organization_id}
+          onComplete={() => { setShowCheckout(false); fetchData(); }}
+          onCancel={() => setShowCheckout(false)}
+        />
+      );
+    }
+
     const sc = getStatusConfig(ownerSub.status);
     const trialDays = getTrialDaysRemaining(ownerSub.trial_ends_at);
     const usagePercent = ownerSub.max_stores > 0
       ? Math.min(100, Math.round((ownerStoreCount / ownerSub.max_stores) * 100))
       : 0;
+    const needsCheckout = !ownerSub.asaas_subscription_id && ownerSub.status !== 'canceled';
 
     return (
       <div className="animate-fade-in">
@@ -365,8 +378,18 @@ export default function AdminSubscriptions({ goBack, orgId, isSuperAdmin }) {
             </div>
           )}
 
+          {/* Checkout button */}
+          {needsCheckout && (
+            <button
+              onClick={() => setShowCheckout(true)}
+              className="mt-5 w-full flex items-center justify-center gap-2 bg-primary-500 text-white font-bold py-3 rounded-xl hover:bg-primary-600 active:scale-95 transition-all min-h-[48px] cursor-pointer"
+            >
+              <Rocket size={18} /> Configurar Pagamento
+            </button>
+          )}
+
           {/* Action buttons */}
-          {ownerSub.status === 'active' && !ownerSub.pending_changes && (
+          {ownerSub.status === 'active' && !ownerSub.pending_changes && !needsCheckout && (
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={openAddSlots}
