@@ -122,7 +122,8 @@ export default function AdminOrgChart({ goBack, orgId, orgName, lojas, onUpdate 
       restaurant_group_id: selectedGroupId,
     });
     if (error) {
-      alert("Um erro ocorreu, por favor tente novamente.");
+      if (error.message?.includes("Limite de lojas")) alert("Limite de lojas atingido. Aumente seu plano para adicionar mais lojas.");
+      else alert("Um erro ocorreu, por favor tente novamente.");
       return;
     }
     setModalNovaLoja(false);

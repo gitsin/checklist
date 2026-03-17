@@ -9,39 +9,45 @@ export function useStoreLimit(orgId) {
   async function checkBeforeCreate() {
     if (!orgId) return true;
 
-    const [subRes, countRes, pricingRes] = await Promise.all([
-      supabase
-        .from("subscriptions")
-        .select("id, max_stores, price_per_store, current_period_end")
-        .eq("organization_id", orgId)
-        .single(),
-      supabase
-        .from("stores")
-        .select("id", { count: "exact" })
-        .eq("organization_id", orgId)
-        .eq("active", true),
-      supabase.rpc("get_current_pricing"),
-    ]);
+    try {
+      const [subRes, countRes, pricingRes] = await Promise.all([
+        supabase
+          .from("subscriptions")
+          .select("id, max_stores, price_per_store, current_period_end")
+          .eq("organization_id", orgId)
+          .single(),
+        supabase
+          .from("stores")
+          .select("id", { count: "exact" })
+          .eq("organization_id", orgId)
+          .eq("active", true),
+        supabase.rpc("get_current_pricing"),
+      ]);
 
-    const sub = subRes.data;
-    const maxStores = sub?.max_stores ?? null;
-    const storeCount = countRes.count ?? 0;
+      const sub = subRes.data;
+      const maxStores = sub?.max_stores ?? null;
+      const storeCount = countRes.count ?? 0;
 
-    if (maxStores !== null && storeCount >= maxStores) {
-      const pricing = Array.isArray(pricingRes.data) ? pricingRes.data[0] : pricingRes.data;
-      const pricePerStore = pricing ? Number(pricing.price_per_store) : Number(sub?.price_per_store || 0);
+      if (maxStores !== null && storeCount >= maxStores) {
+        const pricing = Array.isArray(pricingRes.data) ? pricingRes.data[0] : pricingRes.data;
+        const pricePerStore = pricing ? Number(pricing.price_per_store) : Number(sub?.price_per_store || 0);
 
-      setUpgradeInfo({
-        maxStores,
-        storeCount,
-        subscriptionId: sub?.id,
-        currentMaxStores: sub?.max_stores,
-        pricePerStore,
-        periodEnd: sub?.current_period_end,
-      });
+        setUpgradeInfo({
+          maxStores,
+          storeCount,
+          subscriptionId: sub?.id,
+          currentMaxStores: sub?.max_stores,
+          pricePerStore,
+          periodEnd: sub?.current_period_end,
+        });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error("checkBeforeCreate error:", err);
+      alert("Não foi possível verificar o limite de lojas. Tente novamente.");
       return false;
     }
-    return true;
   }
 
   async function addSlots(qty) {

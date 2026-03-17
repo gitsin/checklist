@@ -17,7 +17,10 @@ export default function AdminStores({ goBack, lojas, onUpdate, orgId }) {
     const allowed = await checkBeforeCreate();
     if (!allowed) return;
     const { error } = await supabase.from("stores").insert({ name: novaLojaNome, timezone: 'America/Sao_Paulo', active: true, organization_id: orgId });
-    if (error) alert("Erro: " + error.message); else { setNovaLojaNome(""); onUpdate(); }
+    if (error) {
+      if (error.message?.includes("Limite de lojas")) alert("Limite de lojas atingido. Aumente seu plano para adicionar mais lojas.");
+      else alert("Um erro ocorreu, por favor tente novamente.");
+    } else { setNovaLojaNome(""); onUpdate(); }
   }
 
   async function toggleStatusLoja(loja) {
