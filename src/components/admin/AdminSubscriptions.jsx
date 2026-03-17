@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { formatPrice } from '../../utils/formatPrice';
+import { callEdgeFunction } from '../../utils/callEdgeFunction';
 import { ArrowLeft, CreditCard, Pencil, X, AlertTriangle, Plus, Minus, ShieldAlert, Rocket } from 'lucide-react';
 import AdminCheckout from './AdminCheckout';
 
@@ -126,22 +127,18 @@ export default function AdminSubscriptions({ goBack, orgId, isSuperAdmin }) {
       return;
     }
     setOwnerSaving(true);
-    const { error } = await supabase
-      .from('subscriptions')
-      .update({
-        max_stores: ownerSub.max_stores + qty,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', ownerSub.id);
-
-    if (error) {
-      setAddSlotsError('Um erro ocorreu, por favor tente novamente');
+    try {
+      await callEdgeFunction('asaas-update-subscription', {
+        subscriptionId: ownerSub.id,
+        addStores: qty,
+      });
       setOwnerSaving(false);
-      return;
+      setAddSlotsModal(false);
+      await fetchData();
+    } catch (err) {
+      setAddSlotsError(err.message || 'Um erro ocorreu, por favor tente novamente');
+      setOwnerSaving(false);
     }
-    setOwnerSaving(false);
-    setAddSlotsModal(false);
-    await fetchData();
   }
 
   function openReduceSlots() {
